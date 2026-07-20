@@ -379,6 +379,24 @@ button:disabled {
   font-weight: 650;
   font-size: 12.5px;
   color: var(--text-hi);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.badge-pending {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: rgba(255, 176, 104, 0.16);
+  color: var(--signal-warn);
+  border: 1px solid rgba(255, 176, 104, 0.3);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+.project-list-item.is-pending {
+  border-color: rgba(255, 176, 104, 0.25);
 }
 .project-list-item .p-meta {
   font-size: 10.5px;
@@ -408,6 +426,44 @@ button:disabled {
   font-weight: 650;
   margin: 0 0 2px;
   color: var(--text-hi);
+}
+
+.push-status-pill {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  margin-bottom: 10px;
+}
+.push-status-pill.pushed {
+  color: var(--grad-optimized);
+  background: rgba(46, 230, 184, 0.1);
+  border: 1px solid rgba(46, 230, 184, 0.25);
+}
+.push-status-pill.pending {
+  color: var(--signal-warn);
+  background: rgba(255, 176, 104, 0.1);
+  border: 1px solid rgba(255, 176, 104, 0.3);
+}
+
+/* First-push emphasis: the diff box + its push buttons become the obvious
+   next step, not just a sentence the user has to parse. Static amber glow
+   rather than a blinking pulse — noticeable without being distracting,
+   and respects prefers-reduced-motion by not depending on animation at all. */
+.diff-box.needs-baseline {
+  background: rgba(255, 176, 104, 0.06);
+  border-color: rgba(255, 176, 104, 0.3);
+}
+.diff-box.needs-baseline #pd-diff-summary {
+  color: var(--signal-warn);
+}
+.diff-box.needs-baseline .push-actions .btn-ghost {
+  border-color: var(--signal-warn);
+  box-shadow: 0 0 0 1px rgba(255, 176, 104, 0.2), 0 4px 16px rgba(255, 176, 104, 0.18);
+}
+.diff-box.needs-baseline .push-actions .btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 176, 104, 0.12);
 }
 
 .diff-box {
