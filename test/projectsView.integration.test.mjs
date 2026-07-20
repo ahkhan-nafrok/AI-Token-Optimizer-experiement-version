@@ -14,14 +14,15 @@ import assert from "node:assert/strict";
 // ---------- Fake DOM ----------
 function makeFakeElement(id) {
   const listeners = {};
-  return {
+  let _innerHTML = "";
+  let _textContent = "";
+  const el = {
     id,
     hidden: false,
     disabled: false,
-    textContent: "",
-    innerHTML: "",
     value: "",
     open: false,
+    _children: [],
     classList: {
       _set: new Set(),
       add(c) { this._set.add(c); },
@@ -36,22 +37,49 @@ function makeFakeElement(id) {
     async dispatch(type, evt = {}) {
       for (const fn of listeners[type] || []) await fn(evt);
     },
-    appendChild() {},
+    appendChild(child) {
+      el._children.push(child);
+    },
     querySelector() {
       // The only querySelector call in projectsView.js is row.querySelector(".p-delete")
       // right after row.innerHTML is set from a template that always includes that button.
-      // Return a stub clickable element so wiring doesn't throw.
       return makeFakeElement("stub-child");
     },
     querySelectorAll() {
       return [];
     },
   };
+  // Real DOM: setting .textContent also updates what .innerHTML reads back as
+  // (HTML-escaped). The actual escapeHtml() helper in projectsView.js depends
+  // on exactly this behavior (creates a div, sets textContent, reads innerHTML),
+  // so the fake DOM has to model it or that helper silently returns "".
+  Object.defineProperty(el, "textContent", {
+    get() { return _textContent; },
+    set(v) {
+      _textContent = String(v);
+      _innerHTML = _textContent
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    },
+  });
+  Object.defineProperty(el, "innerHTML", {
+    get() { return _innerHTML; },
+    set(v) {
+      _innerHTML = v;
+      el._children = []; // real DOM: assigning innerHTML replaces all prior children
+    },
+  });
+  Object.defineProperty(el, "className", {
+    get() { return [...el.classList._set].join(" "); },
+    set(v) { el.classList._set = new Set(String(v).split(/\s+/).filter(Boolean)); },
+  });
+  return el;
 }
 
 const elementIds = [
   "project-list", "new-project-btn", "new-project-name", "new-project-repo", "new-project-form",
-  "project-detail", "pd-name", "pd-repo", "pd-refresh-btn", "pd-status", "pd-diff",
+  "project-detail", "pd-name", "pd-repo", "pd-push-status", "pd-refresh-btn", "pd-status", "pd-diff",
   "pd-diff-summary", "pd-capacity-warning", "pd-copy-btn", "pd-download-btn",
   "pd-autoupload-btn", "pd-push-result", "pd-history",
 ];
@@ -146,21 +174,33 @@ elements["new-project-repo"].value = "fake/repo";
 await elements["new-project-btn"].dispatch("click");
 console.log("  ok  - project created without throwing");
 
+console.log("\nChecking pd-push-status pill shows 'pending' immediately on open, before any refresh...");
+assert.ok(elements["pd-push-status"].classList.contains("pending"), "a never-pushed project must show the pending pill on open");
+assert.ok(elements["pd-push-status"].textContent.includes("Not yet pushed"), `got: ${elements["pd-push-status"].textContent}`);
+console.log(`  ok  - pd-push-status: "${elements["pd-push-status"].textContent}"`);
+
 console.log("\nFirst 'Check for Updates' click (cold cache)...");
 await elements["pd-refresh-btn"].dispatch("click");
 assert.equal(fetchCallCounts["package.json"], 1, "cold refresh should fetch the manifest once");
 assert.equal(fetchCallCounts["index.js"], 1, "cold refresh should fetch the entry file once");
-assert.ok(elements["pd-diff-summary"].textContent.includes("First push"), `expected first-push summary, got: ${elements["pd-diff-summary"].textContent}`);
+assert.ok(elements["pd-diff-summary"].textContent.includes("No version pushed yet"), `expected instructive first-push copy, got: ${elements["pd-diff-summary"].textContent}`);
+assert.ok(elements["pd-diff"].classList.contains("needs-baseline"), "the diff box must carry needs-baseline so CSS can emphasize the push buttons");
 console.log(`  ok  - pd-diff-summary: "${elements["pd-diff-summary"].textContent}"`);
+console.log("  ok  - pd-diff has needs-baseline class for button emphasis");
 
 console.log("\nClicking Copy to push it (real confirmPush -> real store.recordPush)...");
 await elements["pd-copy-btn"].dispatch("click");
 console.log("  ok  - copy/push completed without throwing");
-console.log(`  ok  - stored fileCache in chrome.storage mock has keys: ${Object.keys(chromeStorageMock.projects["fake-project"].fileCache).join(", ")}`);
 assert.ok(
   Object.keys(chromeStorageMock.projects["fake-project"].fileCache).length === 2,
   "after a push, the project's fileCache in storage should contain both cached files"
 );
+
+console.log("\nConfirming pd-push-status flips to 'pushed' and needs-baseline clears after the push (openProject re-renders automatically)...");
+assert.ok(elements["pd-push-status"].classList.contains("pushed"), "status pill must flip to pushed after a real push");
+assert.ok(!elements["pd-push-status"].classList.contains("pending"), "pending class must be removed once pushed");
+assert.ok(!elements["pd-diff"].classList.contains("needs-baseline"), "needs-baseline must clear after re-opening a now-pushed project");
+console.log(`  ok  - pd-push-status: "${elements["pd-push-status"].textContent}"`);
 
 console.log("\nSecond 'Check for Updates' click (warm cache — repo unchanged)...");
 fetchCallCounts = { "package.json": 0, "index.js": 0 }; // reset counters to isolate this refresh
@@ -169,8 +209,30 @@ assert.equal(fetchCallCounts["package.json"], 0, "warm refresh must NOT refetch 
 assert.equal(fetchCallCounts["index.js"], 0, "warm refresh must NOT refetch the unchanged entry file");
 assert.ok(elements["pd-diff-summary"].textContent.includes("No changes detected"), `expected no-changes summary, got: ${elements["pd-diff-summary"].textContent}`);
 assert.ok(elements["pd-diff-summary"].textContent.includes("unchanged (skipped)"), "the UI should surface the cache-skip count to the user");
+assert.ok(!elements["pd-diff"].classList.contains("needs-baseline"), "an already-pushed project's routine refresh must not carry first-push emphasis");
 console.log(`  ok  - pd-diff-summary: "${elements["pd-diff-summary"].textContent}"`);
 console.log("  ok  - warm refresh through the REAL popup wiring made zero content-fetch calls, exactly as build.cache.test.mjs proved in isolation");
+
+console.log("\n--- Multi-project list scenario (scalability check) ---");
+console.log("Adding a SECOND project (never pushed) to test list ordering/badges through real rendering...");
+elements["new-project-name"].value = "Zzz Second Project"; // deliberately sorts last alphabetically, to prove pending-first beats alpha
+elements["new-project-repo"].value = "fake/repo2";
+await elements["new-project-btn"].dispatch("click");
+
+const listRows = elements["project-list"]._children;
+assert.equal(listRows.length, 2, "both tracked projects should render as rows");
+console.log(`  ok  - project-list rendered ${listRows.length} rows`);
+
+// Row order: the never-pushed "Zzz Second Project" must come BEFORE the
+// already-pushed "Fake Project", even though alphabetically it would sort last.
+// This is the actual scalability property: with many projects, the ones
+// needing action surface first regardless of naming.
+assert.ok(listRows[0].innerHTML.includes("Zzz Second Project"), `expected the pending project first, row 0 was: ${listRows[0].innerHTML.slice(0, 120)}`);
+assert.ok(listRows[0].innerHTML.includes("badge-pending"), "the pending project's row must carry the needs-push badge");
+assert.ok(listRows[1].innerHTML.includes("Fake Project"), "the already-pushed project should sort after the pending one");
+assert.ok(!listRows[1].innerHTML.includes("badge-pending"), "an already-pushed project must NOT show the pending badge");
+console.log("  ok  - list correctly orders the never-pushed project first, with a visible badge");
+console.log("  ok  - the already-pushed project shows no badge, sorts after");
 
 console.log("\nAll projectsView integration checks passed.");
 console.log("\nNOTE — what this test does NOT verify: pixel-accurate rendering, real click");
