@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Token Optimizer</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <h1>Token Optimize</h1>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="skeletonizer">Skeletonizer</button>
+    <button class="tab-btn" data-tab="projects">Projects</button>
+  </nav>
+
+  <!-- ===================== TAB 1: SKELETONIZER (Module 1) ===================== -->
+  <section id="tab-skeletonizer" class="tab-panel active">
+    <div class="field">
+      <label for="repo-input">GitHub repo</label>
+      <input id="repo-input" type="text" placeholder="owner/repo or github.com/owner/repo" />
+    </div>
+
+    <details class="field">
+      <summary>GitHub token (optional — raises rate limit to 5,000/hr)</summary>
+      <input id="token-input" type="password" placeholder="ghp_..." />
+      <p class="hint">Stored locally via chrome.storage, never sent anywhere but api.github.com.</p>
+    </details>
+
+    <button id="build-btn">Build Tier 1 Pack</button>
+
+    <div id="status" class="status" hidden></div>
+
+    <div id="result" class="result" hidden>
+      <div class="result-header">
+        <span id="token-count"></span>
+        <span id="trimmed-note" class="trimmed-note"></span>
+      </div>
+
+      <div id="entry-file-note" class="entry-note"></div>
+
+      <textarea id="output" readonly></textarea>
+
+      <button id="copy-btn">Copy to Clipboard</button>
+    </div>
+  </section>
+
+  <!-- ===================== TAB 2: PROJECTS (Module 2) ===================== -->
+  <section id="tab-projects" class="tab-panel">
+    <div id="project-list"></div>
+
+    <details class="field" id="new-project-form">
+      <summary>+ Track a new project</summary>
+      <input id="new-project-name" type="text" placeholder="Project name (e.g. AML Motors)" />
+      <input id="new-project-repo" type="text" placeholder="owner/repo" />
+      <button id="new-project-btn">Add Project</button>
+    </details>
+
+    <div id="project-detail" class="project-detail" hidden>
+      <h2 id="pd-name"></h2>
+      <p id="pd-repo" class="hint"></p>
+
+      <button id="pd-refresh-btn">Check for Updates</button>
+      <div id="pd-status" class="status" hidden></div>
+
+      <div id="pd-diff" class="diff-box" hidden>
+        <p id="pd-diff-summary"></p>
+        <p id="pd-capacity-warning" class="capacity-warning" hidden></p>
+
+        <div class="push-actions">
+          <button id="pd-copy-btn">Copy to Clipboard</button>
+          <button id="pd-download-btn">Download .md File</button>
+          <button id="pd-autoupload-btn" title="Experimental — requires the target claude.ai Project open in another tab">
+            Try Auto-Upload (experimental)
+          </button>
+        </div>
+        <p id="pd-push-result" class="hint"></p>
+      </div>
+
+      <div id="pd-history" class="history-box"></div>
+    </div>
+  </section>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
