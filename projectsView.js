@@ -123,11 +123,19 @@ export function initProjectsView() {
     pdRefreshBtn.disabled = true;
 
     try {
-      const { markdown, tokenEstimate } = await buildTier1(p.repo, null, (msg) => setStatus(pdStatus, msg));
+      const { markdown, tokenEstimate, fileCache, cacheStats } = await buildTier1(
+        p.repo,
+        null,
+        (msg) => setStatus(pdStatus, msg),
+        p.fileCache || {}
+      );
       const diff = diffMarkdown(p.lastPushedMarkdown, markdown);
-      pendingBuild = { markdown, tokenEstimate, diff };
+      pendingBuild = { markdown, tokenEstimate, diff, fileCache };
 
-      pdDiffSummary.textContent = `${diff.summary} · ~${tokenEstimate.toLocaleString()} tokens total`;
+      const cacheNote = cacheStats && (cacheStats.reused || cacheStats.fetched)
+        ? ` · ${cacheStats.reused} file(s) unchanged (skipped), ${cacheStats.fetched} fetched`
+        : "";
+      pdDiffSummary.textContent = `${diff.summary} · ~${tokenEstimate.toLocaleString()} tokens total${cacheNote}`;
       const warning = capacityWarning(tokenEstimate);
       if (warning.message) {
         pdCapacityWarning.hidden = false;
@@ -203,6 +211,7 @@ export function initProjectsView() {
       markdown: pendingBuild.markdown,
       tokens: pendingBuild.tokenEstimate,
       changeSummary: pendingBuild.diff.summary,
+      fileCache: pendingBuild.fileCache,
     });
     if (!skipMessage) pdPushResult.textContent = message;
     pendingBuild = null;
