@@ -1,243 +1,476 @@
+/* ============================================================
+   Token Optimizer — Design tokens
+   Signature idea: the tool's whole job is compression (raw repo ->
+   skeleton -> cached knowledge). The indigo->mint gradient represents
+   that pipeline literally, via the "compression meter" under every
+   token count, not just as decorative button chrome.
+   ============================================================ */
+:root {
+  --bg-void: #0a0d14;
+  --bg-void-2: #0d1119;
+
+  --glass-fill: rgba(255, 255, 255, 0.05);
+  --glass-fill-hover: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-strong: rgba(255, 255, 255, 0.16);
+
+  --grad-raw: #6d5dfc;      /* dense / unoptimized */
+  --grad-optimized: #2ee6b8; /* compressed / cached */
+  --grad-primary: linear-gradient(120deg, var(--grad-raw) 0%, var(--grad-optimized) 100%);
+
+  --signal-warn: #ffb068;
+  --signal-danger: #ff6b6b;
+
+  --text-hi: #edeff7;
+  --text-mid: #a7aec2;
+  --text-low: #6b7284;
+
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
 * { box-sizing: border-box; }
 
 body {
   width: 380px;
-  padding: 14px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 420px;
+  margin: 0;
+  padding: 16px 14px 20px;
+  font-family: var(--font-ui);
   font-size: 13px;
-  color: #1a1a1a;
+  color: var(--text-hi);
+  background: var(--bg-void);
+  position: relative;
+  overflow-x: hidden;
 }
 
-header {
+/* Ambient glass background — two soft blurred blobs, fixed, no motion.
+   Kept subtle: this is a functional dev tool, not a landing page. */
+.bg-glow {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+}
+.bg-glow-a {
+  width: 220px;
+  height: 220px;
+  top: -80px;
+  left: -60px;
+  background: var(--grad-raw);
+}
+.bg-glow-b {
+  width: 220px;
+  height: 220px;
+  bottom: -100px;
+  right: -70px;
+  background: var(--grad-optimized);
+}
+
+/* Everything else sits above the glow layer */
+header, nav, section { position: relative; z-index: 1; }
+
+/* ---------- Header ---------- */
+.app-header {
+  margin-bottom: 14px;
+}
+.brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 8px;
 }
-
+.brand-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: var(--grad-primary);
+  flex-shrink: 0;
+  box-shadow: 0 0 14px rgba(109, 93, 252, 0.45);
+}
 h1 {
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   margin: 0;
+  color: var(--text-hi);
 }
 
-.tier-badge {
-  font-size: 11px;
-  background: #eee;
-  padding: 2px 8px;
-  border-radius: 10px;
-  color: #555;
+/* ---------- Tabs — glass segmented control ---------- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 14px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.tab-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-mid);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.tab-btn:hover { color: var(--text-hi); }
+.tab-btn.active {
+  color: #0a0d14;
+  background: var(--grad-primary);
+}
+.tab-btn:focus-visible {
+  outline: 2px solid var(--grad-optimized);
+  outline-offset: 2px;
 }
 
-.field {
-  margin-bottom: 10px;
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ---------- Glass card ---------- */
+.glass-card {
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
+
+/* ---------- Fields ---------- */
+.field { margin-bottom: 10px; }
+.field:last-of-type { margin-bottom: 0; }
 
 label, summary {
   display: block;
-  font-size: 12px;
-  color: #555;
-  margin-bottom: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-mid);
+  margin-bottom: 5px;
   cursor: pointer;
+  letter-spacing: 0.01em;
 }
+
+.summary-hint {
+  font-weight: 400;
+  color: var(--text-low);
+  font-size: 11px;
+}
+
+.field-collapsible {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.field-collapsible summary { margin-bottom: 0; }
+.field-collapsible[open] summary { margin-bottom: 8px; }
+.field-collapsible input { margin-top: 0; }
 
 input[type="text"], input[type="password"] {
   width: 100%;
-  padding: 6px 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input[type="text"]::placeholder, input[type="password"]::placeholder {
+  color: var(--text-low);
+  font-family: var(--font-ui);
+}
+input[type="text"]:focus, input[type="password"]:focus {
+  outline: none;
+  border-color: var(--grad-optimized);
+  box-shadow: 0 0 0 3px rgba(46, 230, 184, 0.15);
 }
 
 .hint {
   font-size: 11px;
-  color: #888;
-  margin: 4px 0 0;
+  color: var(--text-low);
+  margin: 6px 0 0;
+  line-height: 1.4;
 }
+.hint.mono { font-family: var(--font-mono); }
 
+/* ---------- Buttons ---------- */
 button {
   width: 100%;
-  padding: 8px;
-  background: #1a1a1a;
-  color: white;
   border: none;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s ease, opacity 0.15s ease, background 0.15s ease;
 }
-
+button:focus-visible {
+  outline: 2px solid var(--grad-optimized);
+  outline-offset: 2px;
+}
 button:disabled {
-  background: #999;
+  opacity: 0.45;
   cursor: not-allowed;
+  transform: none !important;
 }
 
-button:hover:not(:disabled) {
-  background: #333;
+.btn-primary {
+  padding: 10px;
+  color: #0a0d14;
+  background: var(--grad-primary);
+  box-shadow: 0 4px 18px rgba(109, 93, 252, 0.28);
+  margin-top: 4px;
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(46, 230, 184, 0.32);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
+
+.btn-ghost {
+  padding: 9px;
+  color: var(--text-hi);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border-strong);
+  margin-top: 8px;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--glass-fill-hover);
+  border-color: var(--grad-optimized);
 }
 
+.btn-experimental {
+  padding: 9px;
+  color: var(--text-mid);
+  background: rgba(255, 176, 104, 0.07);
+  border: 1px dashed rgba(255, 176, 104, 0.35);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.btn-experimental:hover:not(:disabled) {
+  color: var(--signal-warn);
+  border-color: var(--signal-warn);
+}
+.badge-experimental {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(255, 176, 104, 0.18);
+  color: var(--signal-warn);
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+}
+
+/* ---------- Status / progress ---------- */
 .status {
   margin-top: 10px;
-  font-size: 12px;
-  color: #555;
+  font-size: 11.5px;
+  color: var(--text-mid);
+  font-family: var(--font-mono);
 }
+.status.error { color: var(--signal-danger); }
 
-.status.error {
-  color: #b00020;
-}
-
-.result {
-  margin-top: 14px;
-}
+/* ---------- Result / compression meter (signature element) ---------- */
+.result { margin-top: 14px; }
 
 .result-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
   margin-bottom: 6px;
 }
-
-#token-count {
-  font-weight: 600;
-  font-size: 12px;
+.token-count-value {
+  font-weight: 700;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  background: var(--grad-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.trimmed-note {
+  font-size: 10.5px;
+  color: var(--text-low);
 }
 
-.trimmed-note {
-  font-size: 11px;
-  color: #888;
+.compression-meter {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.compression-meter-fill {
+  height: 100%;
+  width: 62%; /* illustrative fill; purely decorative signature element */
+  border-radius: var(--radius-pill);
+  background: var(--grad-primary);
 }
 
 .entry-note {
   font-size: 11px;
-  color: #555;
-  background: #f7f7f7;
-  border-radius: 6px;
-  padding: 6px 8px;
+  color: var(--text-mid);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
   margin-bottom: 8px;
   white-space: pre-wrap;
+  font-family: var(--font-mono);
 }
 
 #output {
   width: 100%;
-  height: 200px;
-  font-family: ui-monospace, monospace;
+  height: 190px;
+  font-family: var(--font-mono);
   font-size: 11px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 6px;
+  color: var(--text-hi);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
   resize: vertical;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
-
-/* ---------- Tabs ---------- */
-.tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.tab-btn {
-  flex: 1;
-  background: #eee;
-  color: #333;
-  padding: 6px;
-  border-radius: 6px;
-}
-
-.tab-btn.active {
-  background: #1a1a1a;
-  color: white;
-}
-
-.tab-panel {
-  display: none;
-}
-
-.tab-panel.active {
-  display: block;
+#output:focus {
+  outline: none;
+  border-color: var(--grad-optimized);
 }
 
 /* ---------- Projects tab ---------- */
+#project-list { margin-bottom: 12px; }
+
 .project-list-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px;
-  border: 1px solid #e5e5e5;
-  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
   margin-bottom: 6px;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-
 .project-list-item:hover {
-  border-color: #999;
+  border-color: var(--glass-border-strong);
+  background: var(--glass-fill-hover);
 }
-
 .project-list-item .p-name {
-  font-weight: 600;
+  font-weight: 650;
+  font-size: 12.5px;
+  color: var(--text-hi);
 }
-
 .project-list-item .p-meta {
-  font-size: 11px;
-  color: #888;
+  font-size: 10.5px;
+  color: var(--text-low);
+  font-family: var(--font-mono);
+  margin-top: 2px;
 }
-
 .project-list-item .p-delete {
   width: auto;
   background: transparent;
-  color: #b00020;
-  padding: 2px 6px;
+  color: var(--text-low);
+  padding: 2px 8px;
   font-size: 14px;
 }
-
-#new-project-form input {
-  margin-bottom: 6px;
+.project-list-item .p-delete:hover {
+  color: var(--signal-danger);
 }
+
+#new-project-form input { margin-bottom: 6px; }
+#new-project-form input:last-of-type { margin-bottom: 8px; }
 
 .project-detail {
   margin-top: 14px;
-  border-top: 1px solid #e5e5e5;
-  padding-top: 10px;
 }
-
 .project-detail h2 {
   font-size: 14px;
+  font-weight: 650;
   margin: 0 0 2px;
+  color: var(--text-hi);
 }
 
 .diff-box {
   margin-top: 10px;
-  background: #f7f7f7;
-  border-radius: 6px;
-  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+}
+#pd-diff-summary {
+  margin: 0;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: var(--text-mid);
 }
 
 .capacity-warning {
   font-size: 11px;
-  color: #b06a00;
-  margin: 4px 0;
+  color: var(--signal-warn);
+  background: rgba(255, 176, 104, 0.08);
+  border: 1px solid rgba(255, 176, 104, 0.25);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  margin: 8px 0 0;
 }
 
 .push-actions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   margin-top: 6px;
 }
 
-.push-actions button {
-  font-size: 12px;
-}
-
-#pd-autoupload-btn {
-  background: #555;
-}
-
 .history-box {
-  margin-top: 10px;
-  font-size: 11px;
-  color: #666;
+  margin-top: 12px;
+  font-size: 10.5px;
+  color: var(--text-low);
 }
-
+.history-box strong {
+  display: block;
+  color: var(--text-mid);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
 .history-entry {
-  padding: 4px 0;
-  border-bottom: 1px solid #eee;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-family: var(--font-mono);
+}
+.history-entry:last-child { border-bottom: none; }
+
+/* ---------- Scrollbar (glass-consistent) ---------- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--glass-border-strong);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--grad-optimized); }
+
+/* ---------- Accessibility ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
 }
