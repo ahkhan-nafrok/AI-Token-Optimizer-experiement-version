@@ -8,7 +8,7 @@ import { capacityWarning } from "./lib/projectStore.js";
 const store = createProjectStore(chromeStorageAdapter);
 
 let activeProjectId = null;
-let pendingBuild = null; // { markdown, tokenEstimate, diff } — result of "Check for Updates", awaiting a push choice
+let pendingBuild = null; // { markdown, tokenEstimate, diff, fileCache, cacheStats } — result of "Check for Updates", awaiting a push choice
 
 export function initProjectsView() {
   const listEl = document.getElementById("project-list");
