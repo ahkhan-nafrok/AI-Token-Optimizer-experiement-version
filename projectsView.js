@@ -10,6 +10,24 @@ const store = createProjectStore(chromeStorageAdapter);
 let activeProjectId = null;
 let pendingBuild = null; // { markdown, tokenEstimate, diff, fileCache, cacheStats } — result of "Check for Updates", awaiting a push choice
 
+/**
+ * Order projects for the list view: never-pushed projects first (alphabetical
+ * among themselves, since there's no recency signal for them), then pushed
+ * projects most-recently-pushed first. Pure and exported so it's unit-testable
+ * without a DOM — this is the piece that matters when someone is scanning 20+
+ * tracked projects and needs the ones needing action to surface immediately
+ * rather than requiring a scroll-and-read pass over every row.
+ */
+export function sortProjectsForList(projects) {
+  return [...projects].sort((a, b) => {
+    const aPending = !a.lastPushedAt;
+    const bPending = !b.lastPushedAt;
+    if (aPending !== bPending) return aPending ? -1 : 1;
+    if (aPending) return a.name.localeCompare(b.name);
+    return new Date(b.lastPushedAt).getTime() - new Date(a.lastPushedAt).getTime();
+  });
+}
+
 export function initProjectsView() {
   const listEl = document.getElementById("project-list");
   const newBtn = document.getElementById("new-project-btn");
@@ -20,6 +38,7 @@ export function initProjectsView() {
   const detailEl = document.getElementById("project-detail");
   const pdName = document.getElementById("pd-name");
   const pdRepo = document.getElementById("pd-repo");
+  const pdPushStatus = document.getElementById("pd-push-status");
   const pdRefreshBtn = document.getElementById("pd-refresh-btn");
   const pdStatus = document.getElementById("pd-status");
   const pdDiff = document.getElementById("pd-diff");
@@ -38,18 +57,19 @@ export function initProjectsView() {
   }
 
   async function renderList() {
-    const projects = await store.list();
+    const projects = sortProjectsForList(await store.list());
     listEl.innerHTML = "";
     if (!projects.length) {
       listEl.innerHTML = `<p class="hint">No projects tracked yet — add one below.</p>`;
       return;
     }
     for (const p of projects) {
+      const pending = !p.lastPushedAt;
       const row = document.createElement("div");
-      row.className = "project-list-item";
+      row.className = "project-list-item" + (pending ? " is-pending" : "");
       row.innerHTML = `
         <div>
-          <div class="p-name">${escapeHtml(p.name)}</div>
+          <div class="p-name">${escapeHtml(p.name)}${pending ? '<span class="badge-pending">needs push</span>' : ""}</div>
           <div class="p-meta">${escapeHtml(p.repo)} · ${p.lastPushedAt ? "pushed " + timeAgo(p.lastPushedAt) : "never pushed"}</div>
         </div>
         <button class="p-delete" title="Stop tracking">✕</button>
@@ -80,7 +100,15 @@ export function initProjectsView() {
 
     pdName.textContent = p.name;
     pdRepo.textContent = p.repo;
+    if (p.lastPushedAt) {
+      pdPushStatus.textContent = `Pushed ${timeAgo(p.lastPushedAt)}`;
+      pdPushStatus.className = "push-status-pill pushed";
+    } else {
+      pdPushStatus.textContent = "Not yet pushed — no baseline to diff against";
+      pdPushStatus.className = "push-status-pill pending";
+    }
     pdDiff.hidden = true;
+    pdDiff.classList.remove("needs-baseline");
     pdPushResult.textContent = "";
     setStatus(pdStatus, "");
 
@@ -108,7 +136,7 @@ export function initProjectsView() {
       repoInput.value = "";
       newForm.open = false;
       await renderList();
-      openProject(id);
+      await openProject(id);
     } catch (e) {
       alert(e.message);
     }
@@ -135,7 +163,14 @@ export function initProjectsView() {
       const cacheNote = cacheStats && (cacheStats.reused || cacheStats.fetched)
         ? ` · ${cacheStats.reused} file(s) unchanged (skipped), ${cacheStats.fetched} fetched`
         : "";
-      pdDiffSummary.textContent = `${diff.summary} · ~${tokenEstimate.toLocaleString()} tokens total${cacheNote}`;
+
+      if (diff.isFirstPush) {
+        pdDiffSummary.textContent = `No version pushed yet — use one of the options below to set the baseline. Future checks will show what changed. · ~${tokenEstimate.toLocaleString()} tokens total${cacheNote}`;
+        pdDiff.classList.add("needs-baseline");
+      } else {
+        pdDiffSummary.textContent = `${diff.summary} · ~${tokenEstimate.toLocaleString()} tokens total${cacheNote}`;
+        pdDiff.classList.remove("needs-baseline");
+      }
       const warning = capacityWarning(tokenEstimate);
       if (warning.message) {
         pdCapacityWarning.hidden = false;
