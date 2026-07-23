@@ -1,84 +1,93 @@
-/* ============================================================
-   Token Optimizer — Design tokens
-   Signature idea: the tool's whole job is compression (raw repo ->
-   skeleton -> cached knowledge). The indigo->mint gradient represents
-   that pipeline literally, via the "compression meter" under every
-   token count, not just as decorative button chrome.
-   ============================================================ */
-:root {
-  --bg-void: #0a0d14;
-  --bg-void-2: #0d1119;
+/* popup.css — Token Optimizer design system
+   Black / white / grey glassmorphism with a signature indigo→mint gradient
+   used consistently as the "compression pipeline" identity (raw -> optimized),
+   reused across the compression meter, primary buttons, and pin accents.
+   A separate cool-grey→amber staleness gradient is reserved ONLY for GitHub
+   staleness signals, so it never blends into the brand gradient's meaning. */
 
+:root {
+  /* ---- surfaces ---- */
+  --bg-base: #0a0b0d;
+  --bg-base-2: #0d0e11;
   --glass-fill: rgba(255, 255, 255, 0.05);
   --glass-fill-hover: rgba(255, 255, 255, 0.08);
-  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border: rgba(255, 255, 255, 0.10);
   --glass-border-strong: rgba(255, 255, 255, 0.16);
 
-  --grad-raw: #6d5dfc;      /* dense / unoptimized */
-  --grad-optimized: #2ee6b8; /* compressed / cached */
-  --grad-primary: linear-gradient(120deg, var(--grad-raw) 0%, var(--grad-optimized) 100%);
+  /* ---- text ---- */
+  --text-primary: #f2f3f5;
+  --text-secondary: #9a9da6;
+  --text-tertiary: #6b6e76;
 
-  --signal-warn: #ffb068;
-  --signal-danger: #ff6b6b;
+  /* ---- brand gradient: the compression pipeline identity ---- */
+  --grad-start: #6d5dfc;
+  --grad-end: #2ee6b8;
+  --grad: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  --grad-soft: linear-gradient(135deg, rgba(109, 93, 252, 0.18), rgba(46, 230, 184, 0.18));
 
-  --text-hi: #edeff7;
-  --text-mid: #a7aec2;
-  --text-low: #6b7284;
+  /* ---- experimental / warning ---- */
+  --amber: #ffb068;
 
+  /* ---- staleness signal (distinct from brand gradient, on purpose) ---- */
+  --stale-cool: #7b8794;
+  --stale-warm: #ff8a65;
+  --grad-stale: linear-gradient(135deg, var(--stale-cool), var(--stale-warm));
+
+  /* ---- misc ---- */
+  --radius-lg: 18px;
   --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-sm: 8px;
   --radius-pill: 999px;
-
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --font-sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
 
-body {
-  width: 380px;
-  min-height: 420px;
+html, body {
   margin: 0;
-  padding: 16px 14px 20px;
-  font-family: var(--font-ui);
+  padding: 0;
+  width: 380px;
+  min-height: 520px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
   font-size: 13px;
-  color: var(--text-hi);
-  background: var(--bg-void);
+  letter-spacing: 0.1px;
   position: relative;
   overflow-x: hidden;
 }
 
-/* Ambient glass background — two soft blurred blobs, fixed, no motion.
-   Kept subtle: this is a functional dev tool, not a landing page. */
+/* ---------------- background glow blobs (glass depth) ---------------- */
 .bg-glow {
   position: fixed;
   border-radius: 50%;
-  filter: blur(60px);
+  filter: blur(70px);
+  opacity: 0.35;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.35;
 }
 .bg-glow-a {
-  width: 220px;
-  height: 220px;
+  width: 260px;
+  height: 260px;
   top: -80px;
   left: -60px;
-  background: var(--grad-raw);
+  background: radial-gradient(circle, var(--grad-start), transparent 70%);
 }
 .bg-glow-b {
   width: 220px;
   height: 220px;
-  bottom: -100px;
-  right: -70px;
-  background: var(--grad-optimized);
+  bottom: -60px;
+  right: -60px;
+  background: radial-gradient(circle, var(--grad-end), transparent 70%);
+  opacity: 0.25;
 }
 
-/* Everything else sits above the glow layer */
-header, nav, section { position: relative; z-index: 1; }
-
-/* ---------- Header ---------- */
+/* ---------------- header ---------------- */
 .app-header {
-  margin-bottom: 14px;
+  position: relative;
+  z-index: 1;
+  padding: 16px 18px 10px;
 }
 .brand {
   display: flex;
@@ -88,229 +97,179 @@ header, nav, section { position: relative; z-index: 1; }
 .brand-mark {
   width: 18px;
   height: 18px;
-  border-radius: 6px;
-  background: var(--grad-primary);
-  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--grad);
   box-shadow: 0 0 14px rgba(109, 93, 252, 0.45);
+  flex-shrink: 0;
 }
-h1 {
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+.brand h1 {
+  font-size: 14.5px;
+  font-weight: 600;
   margin: 0;
-  color: var(--text-hi);
+  letter-spacing: 0.2px;
 }
 
-/* ---------- Tabs — glass segmented control ---------- */
+/* ---------------- tabs ---------------- */
 .tabs {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 4px;
-  padding: 4px;
-  margin-bottom: 14px;
-  background: var(--glass-fill);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-pill);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  padding: 0 14px 12px;
 }
 .tab-btn {
   flex: 1;
-  border: none;
   background: transparent;
-  color: var(--text-mid);
-  font-family: var(--font-ui);
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
   font-size: 12.5px;
-  font-weight: 600;
-  padding: 7px 10px;
-  border-radius: var(--radius-pill);
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: all 0.15s ease;
 }
-.tab-btn:hover { color: var(--text-hi); }
+.tab-btn:hover { color: var(--text-primary); background: var(--glass-fill); }
 .tab-btn.active {
-  color: #0a0d14;
-  background: var(--grad-primary);
-}
-.tab-btn:focus-visible {
-  outline: 2px solid var(--grad-optimized);
-  outline-offset: 2px;
+  color: var(--text-primary);
+  background: var(--glass-fill-hover);
+  border-color: var(--glass-border);
 }
 
-.tab-panel { display: none; }
+.tab-panel { display: none; position: relative; z-index: 1; padding: 0 14px 18px; }
 .tab-panel.active { display: block; }
 
-/* ---------- Glass card ---------- */
+/* ---------------- glass card ---------------- */
 .glass-card {
   background: var(--glass-fill);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  padding: 14px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  padding: 16px;
 }
 
-/* ---------- Fields ---------- */
-.field { margin-bottom: 10px; }
-.field:last-of-type { margin-bottom: 0; }
-
-label, summary {
+/* ---------------- fields ---------------- */
+.field { margin-bottom: 12px; }
+.field label {
   display: block;
   font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-mid);
-  margin-bottom: 5px;
-  cursor: pointer;
-  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
 }
-
-.summary-hint {
-  font-weight: 400;
-  color: var(--text-low);
-  font-size: 11px;
-}
-
-.field-collapsible {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
-}
-.field-collapsible summary { margin-bottom: 0; }
-.field-collapsible[open] summary { margin-bottom: 8px; }
-.field-collapsible input { margin-top: 0; }
-
 input[type="text"], input[type="password"] {
   width: 100%;
-  padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  color: var(--text-hi);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 12px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-input[type="text"]::placeholder, input[type="password"]::placeholder {
-  color: var(--text-low);
-  font-family: var(--font-ui);
+  padding: 9px 10px;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 input[type="text"]:focus, input[type="password"]:focus {
-  outline: none;
-  border-color: var(--grad-optimized);
-  box-shadow: 0 0 0 3px rgba(46, 230, 184, 0.15);
+  border-color: var(--grad-start);
+  background: rgba(255, 255, 255, 0.06);
 }
-
-.hint {
-  font-size: 11px;
-  color: var(--text-low);
-  margin: 6px 0 0;
-  line-height: 1.4;
+.field-collapsible summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  list-style: none;
+  margin-bottom: 8px;
 }
-.hint.mono { font-family: var(--font-mono); }
+.field-collapsible summary::-webkit-details-marker { display: none; }
+.field-collapsible summary::before { content: "▸ "; }
+.field-collapsible[open] summary::before { content: "▾ "; }
+.summary-hint { color: var(--text-tertiary); font-size: 10.5px; }
+.hint { color: var(--text-tertiary); font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
+.mono { font-family: var(--font-mono); }
 
-/* ---------- Buttons ---------- */
-button {
+/* ---------------- buttons ---------------- */
+button { font-family: var(--font-sans); }
+
+.btn-primary {
   width: 100%;
   border: none;
   border-radius: var(--radius-md);
-  font-family: var(--font-ui);
+  padding: 11px 14px;
   font-size: 12.5px;
   font-weight: 600;
+  color: #0a0b0d;
+  background: var(--grad);
   cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+  transition: filter 0.15s ease, transform 0.1s ease;
 }
-button:focus-visible {
-  outline: 2px solid var(--grad-optimized);
-  outline-offset: 2px;
-}
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none !important;
-}
-
-.btn-primary {
-  padding: 10px;
-  color: #0a0d14;
-  background: var(--grad-primary);
-  box-shadow: 0 4px 18px rgba(109, 93, 252, 0.28);
-  margin-top: 4px;
-}
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 22px rgba(46, 230, 184, 0.32);
-}
-.btn-primary:active:not(:disabled) { transform: translateY(0); }
+.btn-primary:hover { filter: brightness(1.08); box-shadow: 0 0 20px rgba(109, 93, 252, 0.3); }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; box-shadow: none; }
 
 .btn-ghost {
-  padding: 9px;
-  color: var(--text-hi);
-  background: var(--glass-fill);
-  border: 1px solid var(--glass-border-strong);
-  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
-.btn-ghost:hover:not(:disabled) {
-  background: var(--glass-fill-hover);
-  border-color: var(--grad-optimized);
-}
+.btn-ghost:hover { background: var(--glass-fill-hover); border-color: var(--glass-border-strong); }
 
 .btn-experimental {
-  padding: 9px;
-  color: var(--text-mid);
-  background: rgba(255, 176, 104, 0.07);
-  border: 1px dashed rgba(255, 176, 104, 0.35);
-  margin-top: 8px;
-  display: flex;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
 }
-.btn-experimental:hover:not(:disabled) {
-  color: var(--signal-warn);
-  border-color: var(--signal-warn);
-}
 .badge-experimental {
-  font-size: 9px;
+  background: rgba(255, 176, 104, 0.15);
+  color: var(--amber);
+  font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  background: rgba(255, 176, 104, 0.18);
-  color: var(--signal-warn);
   padding: 2px 6px;
   border-radius: var(--radius-pill);
+  letter-spacing: 0.4px;
 }
 
-/* ---------- Status / progress ---------- */
+/* ---------------- status / result ---------------- */
 .status {
-  margin-top: 10px;
   font-size: 11.5px;
-  color: var(--text-mid);
-  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  padding: 8px 0;
 }
-.status.error { color: var(--signal-danger); }
+.status.error { color: #ff8a8a; }
 
-/* ---------- Result / compression meter (signature element) ---------- */
 .result { margin-top: 14px; }
-
 .result-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .token-count-value {
-  font-weight: 700;
-  font-size: 13px;
   font-family: var(--font-mono);
-  background: var(--grad-primary);
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-.trimmed-note {
-  font-size: 10.5px;
-  color: var(--text-low);
-}
+.trimmed-note { font-size: 10.5px; color: var(--text-tertiary); }
 
 .compression-meter {
   height: 4px;
@@ -321,212 +280,188 @@ button:disabled {
 }
 .compression-meter-fill {
   height: 100%;
-  width: 62%; /* illustrative fill; purely decorative signature element */
+  width: 70%;
+  background: var(--grad);
   border-radius: var(--radius-pill);
-  background: var(--grad-primary);
 }
 
 .entry-note {
-  font-size: 11px;
-  color: var(--text-mid);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  white-space: pre-wrap;
-  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  margin-bottom: 10px;
+  max-height: 100px;
+  overflow-y: auto;
 }
 
-#output {
+textarea#output {
   width: 100%;
-  height: 190px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-hi);
-  background: rgba(0, 0, 0, 0.3);
+  height: 160px;
+  background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 10px;
   resize: vertical;
-  margin-bottom: 4px;
-}
-#output:focus {
-  outline: none;
-  border-color: var(--grad-optimized);
+  margin-bottom: 10px;
 }
 
-/* ---------- Projects tab ---------- */
-#project-list { margin-bottom: 12px; }
+/* ---------------- project list ---------------- */
+#project-list { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
 
 .project-list-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  gap: 8px;
   background: var(--glass-fill);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  margin-bottom: 6px;
+  padding: 10px 12px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
-.project-list-item:hover {
-  border-color: var(--glass-border-strong);
-  background: var(--glass-fill-hover);
+.project-list-item:hover { background: var(--glass-fill-hover); }
+
+/* Pinned rows get a subtle tint, not a separate section/divider — per spec,
+   the distinction is spacing/tint only, never a structural break. */
+.project-list-item.is-pinned {
+  background: var(--grad-soft);
+  border-color: rgba(109, 93, 252, 0.28);
 }
-.project-list-item .p-name {
-  font-weight: 650;
+
+.project-list-item.is-pending:not(.is-pinned) {
+  border-color: rgba(123, 135, 148, 0.35);
+}
+
+.p-body { flex: 1; min-width: 0; }
+.p-name {
   font-size: 12.5px;
-  color: var(--text-hi);
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.p-meta {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .badge-pending {
+  background: var(--grad-stale);
+  color: #0a0b0d;
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  background: rgba(255, 176, 104, 0.16);
-  color: var(--signal-warn);
-  border: 1px solid rgba(255, 176, 104, 0.3);
-  padding: 1px 6px;
+  padding: 2px 6px;
   border-radius: var(--radius-pill);
+  letter-spacing: 0.3px;
   flex-shrink: 0;
 }
-.project-list-item.is-pending {
-  border-color: rgba(255, 176, 104, 0.25);
-}
-.project-list-item .p-meta {
-  font-size: 10.5px;
-  color: var(--text-low);
-  font-family: var(--font-mono);
-  margin-top: 2px;
-}
-.project-list-item .p-delete {
-  width: auto;
+
+.p-pin, .p-delete {
   background: transparent;
-  color: var(--text-low);
-  padding: 2px 8px;
-  font-size: 14px;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.project-list-item .p-delete:hover {
-  color: var(--signal-danger);
+.p-pin:hover, .p-delete:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.06); }
+.p-pin.is-pinned { color: var(--grad-end); }
+
+/* ---------------- project detail ---------------- */
+.project-detail { margin-top: 4px; }
+.pd-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.project-detail h2 { font-size: 15px; margin: 0 0 2px; }
+
+.pin-btn {
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.pin-btn.is-pinned {
+  color: #0a0b0d;
+  background: var(--grad);
+  border-color: transparent;
 }
 
-#new-project-form input { margin-bottom: 6px; }
-#new-project-form input:last-of-type { margin-bottom: 8px; }
-
-.project-detail {
-  margin-top: 14px;
-}
-.project-detail h2 {
-  font-size: 14px;
-  font-weight: 650;
-  margin: 0 0 2px;
-  color: var(--text-hi);
+.pd-status-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0 14px;
 }
 
-.push-status-pill {
+.push-status-pill, .last-commit-pill {
   display: inline-block;
   font-size: 10.5px;
-  font-weight: 600;
-  padding: 3px 9px;
+  padding: 4px 9px;
   border-radius: var(--radius-pill);
-  margin-bottom: 10px;
-}
-.push-status-pill.pushed {
-  color: var(--grad-optimized);
-  background: rgba(46, 230, 184, 0.1);
-  border: 1px solid rgba(46, 230, 184, 0.25);
-}
-.push-status-pill.pending {
-  color: var(--signal-warn);
-  background: rgba(255, 176, 104, 0.1);
-  border: 1px solid rgba(255, 176, 104, 0.3);
-}
-
-/* First-push emphasis: the diff box + its push buttons become the obvious
-   next step, not just a sentence the user has to parse. Static amber glow
-   rather than a blinking pulse — noticeable without being distracting,
-   and respects prefers-reduced-motion by not depending on animation at all. */
-.diff-box.needs-baseline {
-  background: rgba(255, 176, 104, 0.06);
-  border-color: rgba(255, 176, 104, 0.3);
-}
-.diff-box.needs-baseline #pd-diff-summary {
-  color: var(--signal-warn);
-}
-.diff-box.needs-baseline .push-actions .btn-ghost {
-  border-color: var(--signal-warn);
-  box-shadow: 0 0 0 1px rgba(255, 176, 104, 0.2), 0 4px 16px rgba(255, 176, 104, 0.18);
-}
-.diff-box.needs-baseline .push-actions .btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 176, 104, 0.12);
-}
-
-.diff-box {
-  margin-top: 10px;
-  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  padding: 10px;
+  color: var(--text-secondary);
 }
-#pd-diff-summary {
-  margin: 0;
-  font-size: 11.5px;
-  font-family: var(--font-mono);
-  color: var(--text-mid);
-}
+.push-status-pill.pushed { color: var(--grad-end); border-color: rgba(46, 230, 184, 0.3); }
+.push-status-pill.pending { color: var(--stale-warm); border-color: rgba(255, 138, 101, 0.3); }
 
+.last-commit-pill { font-family: var(--font-mono); }
+.last-commit-pill.unknown { color: var(--text-tertiary); font-style: italic; }
+
+/* ---------------- diff box ---------------- */
+.diff-box { margin-top: 14px; }
+.diff-box.needs-baseline {
+  padding: 10px;
+  border: 1px dashed var(--grad-start);
+  border-radius: var(--radius-md);
+  background: var(--grad-soft);
+}
+#pd-diff-summary { font-size: 11.5px; color: var(--text-secondary); margin: 0 0 8px; }
 .capacity-warning {
   font-size: 11px;
-  color: var(--signal-warn);
-  background: rgba(255, 176, 104, 0.08);
+  color: var(--amber);
+  background: rgba(255, 176, 104, 0.1);
   border: 1px solid rgba(255, 176, 104, 0.25);
-  border-radius: var(--radius-md);
-  padding: 6px 8px;
-  margin: 8px 0 0;
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  margin-bottom: 8px;
 }
 
-.push-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin-top: 6px;
-}
+.push-actions { display: flex; flex-direction: column; gap: 6px; }
 
-.history-box {
-  margin-top: 12px;
-  font-size: 10.5px;
-  color: var(--text-low);
-}
-.history-box strong {
-  display: block;
-  color: var(--text-mid);
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 6px;
-}
+/* ---------------- history ---------------- */
+.history-box { margin-top: 14px; font-size: 10.5px; }
+.history-box strong { display: block; color: var(--text-secondary); margin-bottom: 6px; font-size: 11px; }
 .history-entry {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--glass-border);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
-}
-.history-entry:last-child { border-bottom: none; }
-
-/* ---------- Scrollbar (glass-consistent) ---------- */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--glass-border-strong);
-  border-radius: var(--radius-pill);
-}
-::-webkit-scrollbar-thumb:hover { background: var(--grad-optimized); }
-
-/* ---------- Accessibility ---------- */
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
