@@ -1,12 +1,4 @@
 // test/build.cache.test.mjs
-// Deterministic test of the SHA-skip cache using a mocked GitHub API — no live
-// network, no rate-limit flakiness. This is intentional: a test suite that
-// depends on a shared-IP rate limit is exactly the kind of fragile dependency
-// this project's own SETUP_GUIDE warns about, so the cache logic (the part
-// that actually matters) is verified against a fake but fully controlled repo.
-//
-// Run with: node test/build.cache.test.mjs
-
 import assert from "node:assert/strict";
 import { buildTier1 } from "../lib/build.js";
 
@@ -42,7 +34,7 @@ function makeMockFetch({ indexSha, indexContent }) {
 
     if (/\/repos\/[^/]+\/[^/]+$/.test(u) && !u.includes("/git/") && !u.includes("/readme") && !u.includes("/contents/")) {
       callCounts.meta++;
-      return jsonResponse({ default_branch: "main", description: "Fake repo", language: "JavaScript" });
+      return jsonResponse({ default_branch: "main", description: "Fake repo", language: "JavaScript", pushed_at: "2026-01-01T00:00:00Z" });
     }
     if (u.includes("/git/trees/")) {
       callCounts.tree++;
@@ -77,7 +69,8 @@ async function run() {
   assert.equal(mock1.callCounts["index.js"], 1, "cold build must fetch the entry file once");
   assert.equal(build1.cacheStats.reused, 0, "cold build has no cache, nothing should be reused");
   assert.ok(build1.markdown.includes("console.log('v1')"), "v1 content should appear in the output");
-  console.log("  ok  - cold build fetches manifest + entry file exactly once each, reused=0");
+  assert.equal(build1.repoMeta.pushedAt, "2026-01-01T00:00:00Z", "repoMeta.pushedAt must be piggybacked from the meta call, no extra fetch");
+  console.log("  ok  - cold build fetches manifest + entry file exactly once each, reused=0, repoMeta.pushedAt captured");
 
   const mock2 = makeMockFetch({ indexSha: "sha-index-V1", indexContent: INDEX_JS_V1 });
   globalThis.fetch = mock2.fetchFn;
@@ -114,7 +107,7 @@ async function run() {
   assert.equal(build4.markdown, build1.markdown, "after a forced refetch, output must match the real current content");
   console.log("  ok  - a corrupted/mismatched cache is never trusted; real content is always refetched instead");
 
-  console.log("\nAll cache tests passed (4/4).");
+  console.log("\nAll cache tests passed (4/4 + repoMeta check).");
 }
 
 run()
