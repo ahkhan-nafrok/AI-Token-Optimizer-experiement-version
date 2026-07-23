@@ -8,24 +8,33 @@ import { capacityWarning } from "./lib/projectStore.js";
 const store = createProjectStore(chromeStorageAdapter);
 
 let activeProjectId = null;
-let pendingBuild = null; // { markdown, tokenEstimate, diff, fileCache, cacheStats } — result of "Check for Updates", awaiting a push choice
+let pendingBuild = null; // { markdown, tokenEstimate, diff, fileCache, repoMeta } — result of "Check for Updates", awaiting a push choice
 
 /**
- * Order projects for the list view: never-pushed projects first (alphabetical
- * among themselves, since there's no recency signal for them), then pushed
- * projects most-recently-pushed first. Pure and exported so it's unit-testable
- * without a DOM — this is the piece that matters when someone is scanning 20+
- * tracked projects and needs the ones needing action to surface immediately
- * rather than requiring a scroll-and-read pass over every row.
+ * Order projects for the list view:
+ *   1. Pinned projects first (max 4), ordered by commit recency among themselves.
+ *   2. Unpinned projects after, also ordered by commit recency.
+ * Within either group, a project that has never been checked (no lastCommitAt
+ * yet) sorts first in that group — same "needs attention first" idea as the
+ * old pending-first behavior, just keyed on real GitHub staleness instead of
+ * whether it's been pushed to Claude. Pure and exported so it's unit-testable
+ * without a DOM.
  */
 export function sortProjectsForList(projects) {
   return [...projects].sort((a, b) => {
-    const aPending = !a.lastPushedAt;
-    const bPending = !b.lastPushedAt;
-    if (aPending !== bPending) return aPending ? -1 : 1;
-    if (aPending) return a.name.localeCompare(b.name);
-    return new Date(b.lastPushedAt).getTime() - new Date(a.lastPushedAt).getTime();
+    const aPinned = !!a.pinned;
+    const bPinned = !!b.pinned;
+    if (aPinned !== bPinned) return aPinned ? -1 : 1;
+    return compareByCommitRecency(a, b);
   });
+}
+
+function compareByCommitRecency(a, b) {
+  const aChecked = !!a.lastCommitAt;
+  const bChecked = !!b.lastCommitAt;
+  if (aChecked !== bChecked) return aChecked ? 1 : -1; // never-checked bubbles to the top of its group
+  if (!aChecked) return a.name.localeCompare(b.name);
+  return new Date(b.lastCommitAt).getTime() - new Date(a.lastCommitAt).getTime();
 }
 
 export function initProjectsView() {
@@ -39,6 +48,8 @@ export function initProjectsView() {
   const pdName = document.getElementById("pd-name");
   const pdRepo = document.getElementById("pd-repo");
   const pdPushStatus = document.getElementById("pd-push-status");
+  const pdLastCommit = document.getElementById("pd-last-commit");
+  const pdPinBtn = document.getElementById("pd-pin-btn");
   const pdRefreshBtn = document.getElementById("pd-refresh-btn");
   const pdStatus = document.getElementById("pd-status");
   const pdDiff = document.getElementById("pd-diff");
@@ -64,19 +75,30 @@ export function initProjectsView() {
       return;
     }
     for (const p of projects) {
-      const pending = !p.lastPushedAt;
+      const neverChecked = !p.lastCommitAt;
       const row = document.createElement("div");
-      row.className = "project-list-item" + (pending ? " is-pending" : "");
+      row.className = "project-list-item" + (p.pinned ? " is-pinned" : "") + (neverChecked ? " is-pending" : "");
       row.innerHTML = `
-        <div>
-          <div class="p-name">${escapeHtml(p.name)}${pending ? '<span class="badge-pending">needs push</span>' : ""}</div>
-          <div class="p-meta">${escapeHtml(p.repo)} · ${p.lastPushedAt ? "pushed " + timeAgo(p.lastPushedAt) : "never pushed"}</div>
+        <button class="p-pin ${p.pinned ? "is-pinned" : ""}" title="${p.pinned ? "Unpin" : "Pin to top"}">${p.pinned ? "★" : "☆"}</button>
+        <div class="p-body">
+          <div class="p-name">${escapeHtml(p.name)}${neverChecked ? '<span class="badge-pending">not checked yet</span>' : ""}</div>
+          <div class="p-meta">${escapeHtml(p.repo)} · ${p.lastCommitAt ? "last commit " + timeAgo(p.lastCommitAt) : "GitHub staleness unknown"}</div>
         </div>
         <button class="p-delete" title="Stop tracking">✕</button>
       `;
       row.addEventListener("click", (e) => {
-        if (e.target.classList.contains("p-delete")) return;
+        if (e.target.classList.contains("p-delete") || e.target.classList.contains("p-pin")) return;
         openProject(p.id);
+      });
+      row.querySelector(".p-pin").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        try {
+          await store.setPinned(p.id, !p.pinned);
+          await renderList();
+          if (activeProjectId === p.id) await openProject(p.id);
+        } catch (err) {
+          alert(err.message);
+        }
       });
       row.querySelector(".p-delete").addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -100,13 +122,23 @@ export function initProjectsView() {
 
     pdName.textContent = p.name;
     pdRepo.textContent = p.repo;
+
     if (p.lastPushedAt) {
-      pdPushStatus.textContent = `Pushed ${timeAgo(p.lastPushedAt)}`;
+      pdPushStatus.textContent = `Pushed to Claude ${timeAgo(p.lastPushedAt)}`;
       pdPushStatus.className = "push-status-pill pushed";
     } else {
       pdPushStatus.textContent = "Not yet pushed — no baseline to diff against";
       pdPushStatus.className = "push-status-pill pending";
     }
+
+    pdLastCommit.textContent = p.lastCommitAt
+      ? `Last GitHub commit: ${timeAgo(p.lastCommitAt)}`
+      : "Last GitHub commit: unknown — click Check for Updates";
+    pdLastCommit.className = "last-commit-pill" + (p.lastCommitAt ? "" : " unknown");
+
+    pdPinBtn.textContent = p.pinned ? "★ Pinned" : "☆ Pin";
+    pdPinBtn.classList.toggle("is-pinned", !!p.pinned);
+
     pdDiff.hidden = true;
     pdDiff.classList.remove("needs-baseline");
     pdPushResult.textContent = "";
@@ -142,6 +174,18 @@ export function initProjectsView() {
     }
   });
 
+  pdPinBtn.addEventListener("click", async () => {
+    if (!activeProjectId) return;
+    const p = await store.get(activeProjectId);
+    try {
+      await store.setPinned(activeProjectId, !p.pinned);
+      await renderList();
+      await openProject(activeProjectId);
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+
   pdRefreshBtn.addEventListener("click", async () => {
     if (!activeProjectId) return;
     const p = await store.get(activeProjectId);
@@ -151,17 +195,27 @@ export function initProjectsView() {
     pdRefreshBtn.disabled = true;
 
     try {
-      const { markdown, tokenEstimate, fileCache, cacheStats } = await buildTier1(
+      const { markdown, tokenEstimate, fileCache, cacheStats, repoMeta } = await buildTier1(
         p.repo,
         null,
         (msg) => setStatus(pdStatus, msg),
         p.fileCache || {}
       );
       const diff = diffMarkdown(p.lastPushedMarkdown, markdown);
-      pendingBuild = { markdown, tokenEstimate, diff, fileCache };
+      pendingBuild = { markdown, tokenEstimate, diff, fileCache, repoMeta };
+
+      // Record GitHub's own last-push (commit) timestamp regardless of
+      // whether the user goes on to push into Claude — this is the real
+      // staleness signal the list sorts by, independent of push behavior.
+      if (repoMeta && repoMeta.pushedAt) {
+        await store.updateCommitInfo(activeProjectId, repoMeta.pushedAt);
+        pdLastCommit.textContent = `Last GitHub commit: ${timeAgo(repoMeta.pushedAt)}`;
+        pdLastCommit.className = "last-commit-pill";
+      }
 
       const cacheNote = cacheStats && (cacheStats.reused || cacheStats.fetched)
-        ? ` · ${cacheStats.reused} file(s) unchanged (skipped), ${cacheStats.fetched} fetched`
+        ? ` · ${cacheStats.reused} file(s) unchanged (skipped), ${cacheStats.fetched} fetched` +
+          (cacheStats.sizeGuardSkipped ? `, ${cacheStats.sizeGuardSkipped} skipped (too large)` : "")
         : "";
 
       if (diff.isFirstPush) {
@@ -180,6 +234,7 @@ export function initProjectsView() {
       }
       pdDiff.hidden = false;
       setStatus(pdStatus, "");
+      renderList(); // list order may have changed now that lastCommitAt updated
     } catch (e) {
       setStatus(pdStatus, e.message, true);
     } finally {
