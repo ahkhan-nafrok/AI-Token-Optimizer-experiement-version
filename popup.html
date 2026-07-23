@@ -71,9 +71,18 @@
     </details>
 
     <div id="project-detail" class="project-detail glass-card" hidden>
-      <h2 id="pd-name"></h2>
-      <p id="pd-repo" class="hint mono"></p>
-      <span id="pd-push-status" class="push-status-pill"></span>
+      <div class="pd-header-row">
+        <div>
+          <h2 id="pd-name"></h2>
+          <p id="pd-repo" class="hint mono"></p>
+        </div>
+        <button id="pd-pin-btn" class="pin-btn" title="Pin to top (max 4)">☆ Pin</button>
+      </div>
+
+      <div class="pd-status-row">
+        <span id="pd-push-status" class="push-status-pill"></span>
+        <span id="pd-last-commit" class="last-commit-pill"></span>
+      </div>
 
       <button id="pd-refresh-btn" class="btn-primary">Check for Updates</button>
       <div id="pd-status" class="status" hidden></div>
