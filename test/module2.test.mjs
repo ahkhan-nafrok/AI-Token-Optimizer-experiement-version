@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { parseSections, diffMarkdown } from "../lib/diff.js";
-import { createProjectStore, capacityWarning, DEFAULT_TOKEN_CAP } from "../lib/projectStore.js";
+import { createProjectStore, capacityWarning, DEFAULT_TOKEN_CAP, MAX_PINNED } from "../lib/projectStore.js";
 
 let passed = 0;
 function test(name, fn) {
@@ -166,9 +166,6 @@ await testAsync("projectStore: remove deletes the project", async () => {
   assert.equal(await store.get("p3"), null);
 });
 
-console.log(`\n${passed} test(s) passed.`);
-if (process.exitCode) console.log("SOME TESTS FAILED — see FAIL lines above.");
-
 // ============================================================
 // PHASE 3 — fileCache persistence (SHA-skip cache round-trip)
 // ============================================================
@@ -194,14 +191,12 @@ await testAsync("projectStore: recordPush WITHOUT a fileCache arg doesn't crash 
   await store.create("p6", "P6", "org/p6");
   const cache = { "index.js": { sha: "xyz", content: "console.log(1)" } };
   await store.recordPush("p6", { markdown: "## A\nx", tokens: 10, changeSummary: "first push", fileCache: cache });
-  // Second push omits fileCache entirely — must not throw, must not silently wipe the cache.
   await store.recordPush("p6", { markdown: "## A\ny", tokens: 12, changeSummary: "second push" });
   const p = await store.get("p6");
   assert.deepEqual(p.fileCache, cache, "omitting fileCache on a push must preserve whatever was there before, not erase it");
 });
 
 await testAsync("projectStore: get() on a project stored BEFORE this field existed still works (migration safety)", async () => {
-  // Simulates real user data from before this update: no fileCache key at all in storage.
   const adapter = makeMockAdapter();
   await adapter.set({
     projects: {
@@ -212,7 +207,6 @@ await testAsync("projectStore: get() on a project stored BEFORE this field exist
         lastPushedTokens: 500,
         lastPushedAt: "2025-01-01T00:00:00.000Z",
         history: [],
-        // no fileCache field — this is what pre-update stored data actually looks like
       },
     },
   });
@@ -234,6 +228,78 @@ await testAsync("projectStore: recordPush on a legacy project (no prior fileCach
   await store.recordPush("legacy2", { markdown: "## A\nx", tokens: 5, changeSummary: "push", fileCache: newCache });
   const p = await store.get("legacy2");
   assert.deepEqual(p.fileCache, newCache);
+});
+
+// ============================================================
+// REFRAME — pinning (max MAX_PINNED) + GitHub commit-recency tracking
+// ============================================================
+
+await testAsync("projectStore: a new project starts unpinned with no lastCommitAt", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p7", "P7", "org/p7");
+  const p = await store.get("p7");
+  assert.equal(p.pinned, false);
+  assert.equal(p.lastCommitAt, null);
+});
+
+await testAsync("projectStore: setPinned(true) persists and setPinned(false) unpins", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p8", "P8", "org/p8");
+  await store.setPinned("p8", true);
+  assert.equal((await store.get("p8")).pinned, true);
+  await store.setPinned("p8", false);
+  assert.equal((await store.get("p8")).pinned, false);
+});
+
+await testAsync(`projectStore: pinning is capped at MAX_PINNED (${MAX_PINNED})`, async () => {
+  const store = createProjectStore(makeMockAdapter());
+  for (let i = 0; i < MAX_PINNED; i++) {
+    await store.create(`pin${i}`, `Pin${i}`, `org/pin${i}`);
+    await store.setPinned(`pin${i}`, true);
+  }
+  await store.create("overflow", "Overflow", "org/overflow");
+  await assert.rejects(() => store.setPinned("overflow", true), /up to 4 projects/);
+});
+
+await testAsync("projectStore: re-pinning an already-pinned project (no-op) doesn't count against the cap", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  for (let i = 0; i < MAX_PINNED; i++) {
+    await store.create(`re${i}`, `Re${i}`, `org/re${i}`);
+    await store.setPinned(`re${i}`, true);
+  }
+  await assert.doesNotReject(() => store.setPinned("re0", true), "re-pinning an already-pinned project must not throw the cap error");
+});
+
+await testAsync("projectStore: setPinned on unknown id throws", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await assert.rejects(() => store.setPinned("ghost", true), /Unknown project/);
+});
+
+await testAsync("projectStore: updateCommitInfo records GitHub's last-push timestamp, independent of recordPush", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p9", "P9", "org/p9");
+  await store.updateCommitInfo("p9", "2026-06-01T00:00:00.000Z");
+  const p = await store.get("p9");
+  assert.equal(p.lastCommitAt, "2026-06-01T00:00:00.000Z");
+  assert.equal(p.lastPushedAt, null, "updateCommitInfo must never touch lastPushedAt — they are different facts");
+});
+
+await testAsync("projectStore: updateCommitInfo on unknown id throws", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await assert.rejects(() => store.updateCommitInfo("ghost", "2026-01-01T00:00:00.000Z"), /Unknown project/);
+});
+
+await testAsync("projectStore: legacy project (no pinned/lastCommitAt fields at all) reads safely with sane defaults", async () => {
+  const adapter = makeMockAdapter();
+  await adapter.set({
+    projects: {
+      "legacy3": { name: "Legacy3", repo: "org/legacy3", lastPushedMarkdown: null, lastPushedTokens: 0, lastPushedAt: null, history: [] },
+    },
+  });
+  const store = createProjectStore(adapter);
+  const p = await store.get("legacy3");
+  assert.equal(p.pinned, false, "legacy project missing `pinned` must default to false, not crash or be undefined");
+  assert.equal(p.lastCommitAt, null, "legacy project missing `lastCommitAt` must default to null");
 });
 
 console.log(`\n${passed} test(s) passed total.`);
