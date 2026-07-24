@@ -59,7 +59,7 @@
     </div>
   </section>
 
-  <!-- ===================== TAB 2: PROJECTS (Module 2) ===================== -->
+  <!-- ===================== TAB 2: PROJECTS (Module 2) — pure GitHub tracker ===================== -->
   <section id="tab-projects" class="tab-panel">
     <div id="project-list"></div>
 
@@ -80,26 +80,12 @@
       </div>
 
       <div class="pd-status-row">
-        <span id="pd-push-status" class="push-status-pill"></span>
-        <span id="pd-last-commit" class="last-commit-pill"></span>
+        <span id="pd-last-checked" class="fact-line"></span>
+        <span id="pd-last-commit" class="fact-line"></span>
       </div>
 
       <button id="pd-refresh-btn" class="btn-primary">Check for Updates</button>
       <div id="pd-status" class="status" hidden></div>
-
-      <div id="pd-diff" class="diff-box" hidden>
-        <p id="pd-diff-summary"></p>
-        <p id="pd-capacity-warning" class="capacity-warning" hidden></p>
-
-        <div class="push-actions">
-          <button id="pd-copy-btn" class="btn-ghost">Copy to Clipboard</button>
-          <button id="pd-download-btn" class="btn-ghost">Download .md File</button>
-          <button id="pd-autoupload-btn" class="btn-experimental" title="Experimental — requires the target claude.ai Project open in another tab">
-            Try Auto-Uploaad<span class="badge-experimental">beta</span>
-          </button>
-        </div>
-        <p id="pd-push-result" class="hint"></p>
-      </div>
 
       <div id="pd-history" class="history-box"></div>
     </div>
