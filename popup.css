@@ -221,31 +221,7 @@ button { font-family: var(--font-sans); }
 }
 .btn-ghost:hover { background: var(--glass-fill-hover); border-color: var(--glass-border-strong); }
 
-.btn-experimental {
-  background: transparent;
-  border: 1px solid var(--glass-border);
-  color: var(--text-secondary);
-  border-radius: var(--radius-md);
-  padding: 9px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.badge-experimental {
-  background: rgba(255, 176, 104, 0.15);
-  color: var(--amber);
-  font-size: 9.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
-  letter-spacing: 0.4px;
-}
-
-/* ---------------- status / result ---------------- */
+/* ---------------- status ---------------- */
 .status {
   font-size: 11.5px;
   color: var(--text-secondary);
@@ -414,47 +390,23 @@ textarea#output {
   border-color: transparent;
 }
 
+/* Two plain neutral fact lines — "Last checked" / "Last GitHub commit" —
+   deliberately NOT pills. These are neutral facts, not a status judgement,
+   so no colored badge treatment (that's what the old push-status pill was
+   for, and it no longer exists). */
 .pd-status-row {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 4px;
   margin: 10px 0 14px;
 }
 
-.push-status-pill, .last-commit-pill {
-  display: inline-block;
-  font-size: 10.5px;
-  padding: 4px 9px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--glass-border);
+.fact-line {
+  font-size: 11.5px;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
 }
-.push-status-pill.pushed { color: var(--grad-end); border-color: rgba(46, 230, 184, 0.3); }
-.push-status-pill.pending { color: var(--stale-warm); border-color: rgba(255, 138, 101, 0.3); }
-
-.last-commit-pill { font-family: var(--font-mono); }
-.last-commit-pill.unknown { color: var(--text-tertiary); font-style: italic; }
-
-/* ---------------- diff box ---------------- */
-.diff-box { margin-top: 14px; }
-.diff-box.needs-baseline {
-  padding: 10px;
-  border: 1px dashed var(--grad-start);
-  border-radius: var(--radius-md);
-  background: var(--grad-soft);
-}
-#pd-diff-summary { font-size: 11.5px; color: var(--text-secondary); margin: 0 0 8px; }
-.capacity-warning {
-  font-size: 11px;
-  color: var(--amber);
-  background: rgba(255, 176, 104, 0.1);
-  border: 1px solid rgba(255, 176, 104, 0.25);
-  border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  margin-bottom: 8px;
-}
-
-.push-actions { display: flex; flex-direction: column; gap: 6px; }
+.fact-line.unknown { color: var(--text-tertiary); font-style: italic; }
 
 /* ---------------- history ---------------- */
 .history-box { margin-top: 14px; font-size: 10.5px; }
