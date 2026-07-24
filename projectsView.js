@@ -1,24 +1,22 @@
 // projectsView.js
-import { buildTier1 } from "./lib/build.js";
+// Project Knowledge Manager — pure GitHub repo tracker. No claude.ai
+// integration, no push/diff flow. "Check for Updates" is a single
+// lightweight GitHub call (lib/github.js#getLatestCommit), not a Tier 1 build.
+import { getLatestCommit, parseRepoInput } from "./lib/github.js";
 import { createProjectStore } from "./lib/projectStore.js";
 import { chromeStorageAdapter } from "./lib/storageAdapter.js";
-import { diffMarkdown } from "./lib/diff.js";
-import { capacityWarning } from "./lib/projectStore.js";
 
 const store = createProjectStore(chromeStorageAdapter);
 
 let activeProjectId = null;
-let pendingBuild = null; // { markdown, tokenEstimate, diff, fileCache, repoMeta } — result of "Check for Updates", awaiting a push choice
 
 /**
  * Order projects for the list view:
  *   1. Pinned projects first (max 4), ordered by commit recency among themselves.
  *   2. Unpinned projects after, also ordered by commit recency.
  * Within either group, a project that has never been checked (no lastCommitAt
- * yet) sorts first in that group — same "needs attention first" idea as the
- * old pending-first behavior, just keyed on real GitHub staleness instead of
- * whether it's been pushed to Claude. Pure and exported so it's unit-testable
- * without a DOM.
+ * yet) sorts first in that group — it needs attention first. Pure and
+ * exported so it's unit-testable without a DOM.
  */
 export function sortProjectsForList(projects) {
   return [...projects].sort((a, b) => {
@@ -47,18 +45,11 @@ export function initProjectsView() {
   const detailEl = document.getElementById("project-detail");
   const pdName = document.getElementById("pd-name");
   const pdRepo = document.getElementById("pd-repo");
-  const pdPushStatus = document.getElementById("pd-push-status");
+  const pdLastChecked = document.getElementById("pd-last-checked");
   const pdLastCommit = document.getElementById("pd-last-commit");
   const pdPinBtn = document.getElementById("pd-pin-btn");
   const pdRefreshBtn = document.getElementById("pd-refresh-btn");
   const pdStatus = document.getElementById("pd-status");
-  const pdDiff = document.getElementById("pd-diff");
-  const pdDiffSummary = document.getElementById("pd-diff-summary");
-  const pdCapacityWarning = document.getElementById("pd-capacity-warning");
-  const pdCopyBtn = document.getElementById("pd-copy-btn");
-  const pdDownloadBtn = document.getElementById("pd-download-btn");
-  const pdAutoUploadBtn = document.getElementById("pd-autoupload-btn");
-  const pdPushResult = document.getElementById("pd-push-result");
   const pdHistory = document.getElementById("pd-history");
 
   function setStatus(el, msg, isError = false) {
@@ -102,7 +93,7 @@ export function initProjectsView() {
       });
       row.querySelector(".p-delete").addEventListener("click", async (e) => {
         e.stopPropagation();
-        if (!confirm(`Stop tracking "${p.name}"? This only removes it from this extension, nothing is deleted on claude.ai.`)) return;
+        if (!confirm(`Stop tracking "${p.name}"? This only removes it from this extension — nothing on GitHub is affected.`)) return;
         await store.remove(p.id);
         if (activeProjectId === p.id) {
           activeProjectId = null;
@@ -116,42 +107,54 @@ export function initProjectsView() {
 
   async function openProject(id) {
     activeProjectId = id;
-    pendingBuild = null;
     const p = await store.get(id);
     if (!p) return;
 
     pdName.textContent = p.name;
     pdRepo.textContent = p.repo;
 
-    if (p.lastPushedAt) {
-      pdPushStatus.textContent = `Pushed to Claude ${timeAgo(p.lastPushedAt)}`;
-      pdPushStatus.className = "push-status-pill pushed";
-    } else {
-      pdPushStatus.textContent = "Not yet pushed — no baseline to diff against";
-      pdPushStatus.className = "push-status-pill pending";
-    }
+    pdLastChecked.textContent = p.lastCheckedAt
+      ? `Last checked: ${timeAgo(p.lastCheckedAt)}`
+      : "Last checked: never";
 
     pdLastCommit.textContent = p.lastCommitAt
       ? `Last GitHub commit: ${timeAgo(p.lastCommitAt)}`
-      : "Last GitHub commit: unknown — click Check for Updates";
+      : "Last GitHub commit: unknown";
     pdLastCommit.className = "last-commit-pill" + (p.lastCommitAt ? "" : " unknown");
 
     pdPinBtn.textContent = p.pinned ? "★ Pinned" : "☆ Pin";
     pdPinBtn.classList.toggle("is-pinned", !!p.pinned);
 
-    pdDiff.hidden = true;
-    pdDiff.classList.remove("needs-baseline");
-    pdPushResult.textContent = "";
     setStatus(pdStatus, "");
 
-    pdHistory.innerHTML = p.history.length
-      ? "<strong>History</strong>" +
-        p.history
-          .map((h) => `<div class="history-entry">${new Date(h.at).toLocaleString()} — ${escapeHtml(h.changeSummary)} (~${h.tokens.toLocaleString()} tok)</div>`)
+    pdHistory.innerHTML = p.commitHistory.length
+      ? "<strong>Commit history</strong>" +
+        p.commitHistory
+          .map(
+            (h) =>
+              `<div class="history-entry">${escapeHtml(h.sha.slice(0, 7))} — ${
+                h.commitDate ? new Date(h.commitDate).toLocaleString() : "unknown date"
+              }</div>`
+          )
           .join("")
-      : `<p class="hint">No pushes recorded yet.</p>`;
+      : `<p class="hint">No commit history yet — click Check for Updates.</p>`;
 
     detailEl.hidden = false;
+  }
+
+  /**
+   * Shared check logic used by both the new-project flow and the manual
+   * refresh button: one GitHub call for the latest commit, then always
+   * updateLastChecked, then conditionally addCommitHistoryEntry (which
+   * itself no-ops if the sha hasn't changed).
+   */
+  async function checkForUpdates(id) {
+    const p = await store.get(id);
+    if (!p) return;
+    const { owner, repo } = parseRepoInput(p.repo);
+    const latest = await getLatestCommit(owner, repo, null);
+    await store.updateLastChecked(id);
+    await store.addCommitHistoryEntry(id, latest);
   }
 
   newBtn.addEventListener("click", async () => {
@@ -169,6 +172,17 @@ export function initProjectsView() {
       newForm.open = false;
       await renderList();
       await openProject(id);
+
+      // Immediately fetch commit #1 so history isn't empty on first open.
+      // Non-blocking: if this fails (bad repo name, rate limit), the
+      // project still exists — just surface the error inline, no rollback.
+      try {
+        await checkForUpdates(id);
+        await renderList();
+        if (activeProjectId === id) await openProject(id);
+      } catch (err) {
+        setStatus(pdStatus, `Project added, but the first check failed: ${err.message}`, true);
+      }
     } catch (e) {
       alert(e.message);
     }
@@ -188,126 +202,19 @@ export function initProjectsView() {
 
   pdRefreshBtn.addEventListener("click", async () => {
     if (!activeProjectId) return;
-    const p = await store.get(activeProjectId);
-    pdDiff.hidden = true;
-    pdPushResult.textContent = "";
-    setStatus(pdStatus, "Building skeleton...");
+    setStatus(pdStatus, "Checking GitHub...");
     pdRefreshBtn.disabled = true;
-
     try {
-      const { markdown, tokenEstimate, fileCache, cacheStats, repoMeta } = await buildTier1(
-        p.repo,
-        null,
-        (msg) => setStatus(pdStatus, msg),
-        p.fileCache || {}
-      );
-      const diff = diffMarkdown(p.lastPushedMarkdown, markdown);
-      pendingBuild = { markdown, tokenEstimate, diff, fileCache, repoMeta };
-
-      // Record GitHub's own last-push (commit) timestamp regardless of
-      // whether the user goes on to push into Claude — this is the real
-      // staleness signal the list sorts by, independent of push behavior.
-      if (repoMeta && repoMeta.pushedAt) {
-        await store.updateCommitInfo(activeProjectId, repoMeta.pushedAt);
-        pdLastCommit.textContent = `Last GitHub commit: ${timeAgo(repoMeta.pushedAt)}`;
-        pdLastCommit.className = "last-commit-pill";
-      }
-
-      const cacheNote = cacheStats && (cacheStats.reused || cacheStats.fetched)
-        ? ` · ${cacheStats.reused} file(s) unchanged (skipped), ${cacheStats.fetched} fetched` +
-          (cacheStats.sizeGuardSkipped ? `, ${cacheStats.sizeGuardSkipped} skipped (too large)` : "")
-        : "";
-
-      if (diff.isFirstPush) {
-        pdDiffSummary.textContent = `No version pushed yet — use one of the options below to set the baseline. Future checks will show what changed. · ~${tokenEstimate.toLocaleString()} tokens total${cacheNote}`;
-        pdDiff.classList.add("needs-baseline");
-      } else {
-        pdDiffSummary.textContent = `${diff.summary} · ~${tokenEstimate.toLocaleString()} tokens total${cacheNote}`;
-        pdDiff.classList.remove("needs-baseline");
-      }
-      const warning = capacityWarning(tokenEstimate);
-      if (warning.message) {
-        pdCapacityWarning.hidden = false;
-        pdCapacityWarning.textContent = warning.message;
-      } else {
-        pdCapacityWarning.hidden = true;
-      }
-      pdDiff.hidden = false;
+      await checkForUpdates(activeProjectId);
       setStatus(pdStatus, "");
-      renderList(); // list order may have changed now that lastCommitAt updated
+      await renderList();
+      await openProject(activeProjectId);
     } catch (e) {
       setStatus(pdStatus, e.message, true);
     } finally {
       pdRefreshBtn.disabled = false;
     }
   });
-
-  pdCopyBtn.addEventListener("click", async () => {
-    if (!pendingBuild) return;
-    await navigator.clipboard.writeText(pendingBuild.markdown);
-    await confirmPush("Copied to clipboard — paste into this Project's Knowledge panel.");
-  });
-
-  pdDownloadBtn.addEventListener("click", async () => {
-    if (!pendingBuild || !activeProjectId) return;
-    const p = await store.get(activeProjectId);
-    const filename = `${slugify(p.name)}-skeleton.md`;
-    const blob = new Blob([pendingBuild.markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-
-    chrome.downloads.download({ url, filename }, () => {
-      URL.revokeObjectURL(url);
-    });
-
-    await confirmPush(`Downloaded as ${filename} — drag it into Project Knowledge, replacing the old version.`);
-  });
-
-  pdAutoUploadBtn.addEventListener("click", async () => {
-    if (!pendingBuild || !activeProjectId) return;
-    const p = await store.get(activeProjectId);
-    const filename = `${slugify(p.name)}-skeleton.md`;
-
-    pdAutoUploadBtn.disabled = true;
-    pdPushResult.textContent = "Attempting auto-upload on the active tab...";
-
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab || !tab.url || !tab.url.startsWith("https://claude.ai/")) {
-        pdPushResult.textContent = "Active tab isn't claude.ai. Open the target Project there first, then retry.";
-        return;
-      }
-
-      const response = await chrome.tabs.sendMessage(tab.id, {
-        type: "TOKEN_OPTIMIZER_AUTO_UPLOAD",
-        filename,
-        content: pendingBuild.markdown,
-      });
-
-      pdPushResult.textContent = response?.reason || "No response from the page — try Download instead.";
-      if (response?.success) {
-        await confirmPush(response.reason, /* skipMessage */ true);
-      }
-    } catch (e) {
-      pdPushResult.textContent = `Auto-upload failed (${e.message}). Use Download or Copy instead — this path is experimental.`;
-    } finally {
-      pdAutoUploadBtn.disabled = false;
-    }
-  });
-
-  /** Record the push in storage once the user has actually acted on pendingBuild. */
-  async function confirmPush(message, skipMessage = false) {
-    if (!pendingBuild || !activeProjectId) return;
-    await store.recordPush(activeProjectId, {
-      markdown: pendingBuild.markdown,
-      tokens: pendingBuild.tokenEstimate,
-      changeSummary: pendingBuild.diff.summary,
-      fileCache: pendingBuild.fileCache,
-    });
-    if (!skipMessage) pdPushResult.textContent = message;
-    pendingBuild = null;
-    await renderList();
-    await openProject(activeProjectId);
-  }
 
   renderList();
 }
