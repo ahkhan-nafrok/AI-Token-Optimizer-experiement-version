@@ -707,3 +707,18 @@ textarea#output:focus {
   transition: color var(--dur-base) var(--ease-out);
 }
 .history-entry:hover { color: var(--text-secondary); }
+
+.template-trigger {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.template-picker {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.template-picker .template-option {
+  flex: 1;
+}
