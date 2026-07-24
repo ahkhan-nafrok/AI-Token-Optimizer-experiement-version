@@ -1,19 +1,7 @@
 import assert from "node:assert/strict";
-import { parseSections, diffMarkdown } from "../lib/diff.js";
-import { createProjectStore, capacityWarning, DEFAULT_TOKEN_CAP, MAX_PINNED } from "../lib/projectStore.js";
+import { createProjectStore, MAX_PINNED, MAX_HISTORY } from "../lib/projectStore.js";
 
 let passed = 0;
-function test(name, fn) {
-  try {
-    fn();
-    passed++;
-    console.log(`  ok  - ${name}`);
-  } catch (e) {
-    console.error(`FAIL  - ${name}`);
-    console.error(`        ${e.message}`);
-    process.exitCode = 1;
-  }
-}
 async function testAsync(name, fn) {
   try {
     await fn();
@@ -25,79 +13,6 @@ async function testAsync(name, fn) {
     process.exitCode = 1;
   }
 }
-
-test("parseSections splits on ## headers", () => {
-  const md = `# Title\nintro text\n\n## Structure\nfile tree here\n\n## Dependencies\ndeps here`;
-  const sections = parseSections(md);
-  assert.equal(sections["Structure"], "file tree here");
-  assert.equal(sections["Dependencies"], "deps here");
-  assert.ok(sections["_preamble"].includes("intro text"));
-});
-
-test("diffMarkdown: first push reports all sections as added", () => {
-  const md = `## Structure\na\n\n## Dependencies\nb`;
-  const result = diffMarkdown(null, md);
-  assert.equal(result.isFirstPush, true);
-  assert.deepEqual(result.added.sort(), ["Dependencies", "Structure"]);
-});
-
-test("diffMarkdown: identical content reports no changes", () => {
-  const md = `## Structure\na\n\n## Dependencies\nb`;
-  const result = diffMarkdown(md, md);
-  assert.equal(result.isFirstPush, false);
-  assert.equal(result.changed.length, 0);
-  assert.equal(result.added.length, 0);
-  assert.equal(result.removed.length, 0);
-  assert.deepEqual(result.unchanged.sort(), ["Dependencies", "Repo header", "Structure"]);
-  assert.equal(result.summary, "No changes detected");
-});
-
-test("diffMarkdown: detects a changed section without flagging untouched ones", () => {
-  const oldMd = `## Structure\na\n\n## Dependencies\nb`;
-  const newMd = `## Structure\na-CHANGED\n\n## Dependencies\nb`;
-  const result = diffMarkdown(oldMd, newMd);
-  assert.deepEqual(result.changed, ["Structure"]);
-  assert.deepEqual(result.unchanged.sort(), ["Dependencies", "Repo header"]);
-});
-
-test("diffMarkdown: detects added and removed sections together", () => {
-  const oldMd = `## Structure\na\n\n## OldSection\nz`;
-  const newMd = `## Structure\na\n\n## NewSection\ny`;
-  const result = diffMarkdown(oldMd, newMd);
-  assert.deepEqual(result.added, ["NewSection"]);
-  assert.deepEqual(result.removed, ["OldSection"]);
-  assert.deepEqual(result.unchanged.sort(), ["Repo header", "Structure"]);
-});
-
-test("diffMarkdown: a change ABOVE the first ## header (repo description) is caught, not silently ignored", () => {
-  const oldMd = `# Repo: acme/widgets\nOriginal description\n\n## Structure\na`;
-  const newMd = `# Repo: acme/widgets\nDESCRIPTION CHANGED\n\n## Structure\na`;
-  const result = diffMarkdown(oldMd, newMd);
-  assert.deepEqual(result.changed, ["Repo header"]);
-  assert.notEqual(result.summary, "No changes detected");
-});
-
-test("capacityWarning: under 80% is ok with no message", () => {
-  const r = capacityWarning(1000, 10000);
-  assert.equal(r.level, "ok");
-  assert.equal(r.message, null);
-});
-
-test("capacityWarning: 80-99% warns", () => {
-  const r = capacityWarning(8500, 10000);
-  assert.equal(r.level, "warn");
-  assert.ok(r.message.includes("85%"));
-});
-
-test("capacityWarning: >=100% is over", () => {
-  const r = capacityWarning(12000, 10000);
-  assert.equal(r.level, "over");
-  assert.ok(r.message.includes("exceeds"));
-});
-
-test("capacityWarning: default cap is 200,000", () => {
-  assert.equal(DEFAULT_TOKEN_CAP, 200000);
-});
 
 function makeMockAdapter() {
   let store = {};
@@ -114,6 +29,10 @@ function makeMockAdapter() {
   };
 }
 
+// ============================================================
+// Basic create / list / remove
+// ============================================================
+
 await testAsync("projectStore: create then list round-trips correctly", async () => {
   const store = createProjectStore(makeMockAdapter());
   await store.create("aml-motors", "AML Motors", "org/aml-motors");
@@ -121,42 +40,15 @@ await testAsync("projectStore: create then list round-trips correctly", async ()
   assert.equal(all.length, 1);
   assert.equal(all[0].id, "aml-motors");
   assert.equal(all[0].repo, "org/aml-motors");
-  assert.equal(all[0].lastPushedMarkdown, null);
+  assert.equal(all[0].lastCheckedAt, null);
+  assert.deepEqual(all[0].commitHistory, []);
+  assert.equal(all[0].lastCommitAt, null, "lastCommitAt must be derived as null for empty commitHistory");
 });
 
 await testAsync("projectStore: create rejects duplicate ids", async () => {
   const store = createProjectStore(makeMockAdapter());
   await store.create("dup", "Dup", "org/dup");
   await assert.rejects(() => store.create("dup", "Dup", "org/dup"), /already exists/);
-});
-
-await testAsync("projectStore: recordPush updates state and prepends history", async () => {
-  const store = createProjectStore(makeMockAdapter());
-  await store.create("p1", "P1", "org/p1");
-  await store.recordPush("p1", { markdown: "## A\nx", tokens: 100, changeSummary: "first push" });
-  await store.recordPush("p1", { markdown: "## A\ny", tokens: 120, changeSummary: "1 section changed" });
-
-  const p = await store.get("p1");
-  assert.equal(p.lastPushedMarkdown, "## A\ny");
-  assert.equal(p.lastPushedTokens, 120);
-  assert.equal(p.history.length, 2);
-  assert.equal(p.history[0].changeSummary, "1 section changed");
-});
-
-await testAsync("projectStore: recordPush caps history at 10 entries", async () => {
-  const store = createProjectStore(makeMockAdapter());
-  await store.create("p2", "P2", "org/p2");
-  for (let i = 0; i < 15; i++) {
-    await store.recordPush("p2", { markdown: `## A\n${i}`, tokens: i, changeSummary: `push ${i}` });
-  }
-  const p = await store.get("p2");
-  assert.equal(p.history.length, 10);
-  assert.equal(p.history[0].changeSummary, "push 14");
-});
-
-await testAsync("projectStore: recordPush on unknown id throws", async () => {
-  const store = createProjectStore(makeMockAdapter());
-  await assert.rejects(() => store.recordPush("ghost", { markdown: "x", tokens: 1, changeSummary: "" }), /Unknown project/);
 });
 
 await testAsync("projectStore: remove deletes the project", async () => {
@@ -167,36 +59,103 @@ await testAsync("projectStore: remove deletes the project", async () => {
 });
 
 // ============================================================
-// PHASE 3 — fileCache persistence (SHA-skip cache round-trip)
+// updateLastChecked — always fires, independent of commit history
 // ============================================================
 
-await testAsync("projectStore: a new project starts with an empty fileCache", async () => {
+await testAsync("projectStore: updateLastChecked sets a fresh timestamp unconditionally", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p1", "P1", "org/p1");
+  const before = Date.now();
+  await store.updateLastChecked("p1");
+  const p = await store.get("p1");
+  assert.ok(p.lastCheckedAt, "lastCheckedAt must be set");
+  assert.ok(new Date(p.lastCheckedAt).getTime() >= before);
+  assert.deepEqual(p.commitHistory, [], "updateLastChecked must never touch commitHistory — they're independent facts");
+});
+
+await testAsync("projectStore: updateLastChecked overwrites on every call, no matter the outcome", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p1b", "P1b", "org/p1b");
+  await store.updateLastChecked("p1b");
+  const first = (await store.get("p1b")).lastCheckedAt;
+  await new Promise((r) => setTimeout(r, 5));
+  await store.updateLastChecked("p1b");
+  const second = (await store.get("p1b")).lastCheckedAt;
+  assert.notEqual(first, second, "a second check must overwrite the timestamp, not preserve the first one");
+});
+
+await testAsync("projectStore: updateLastChecked on unknown id throws", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await assert.rejects(() => store.updateLastChecked("ghost"), /Unknown project/);
+});
+
+// ============================================================
+// addCommitHistoryEntry — SHA-deduped, capped at MAX_HISTORY, FIFO
+// ============================================================
+
+await testAsync("projectStore: addCommitHistoryEntry adds the first entry and derives lastCommitAt", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p2", "P2", "org/p2");
+  await store.addCommitHistoryEntry("p2", { sha: "sha1", commitDate: "2026-01-01T00:00:00.000Z" });
+  const p = await store.get("p2");
+  assert.equal(p.commitHistory.length, 1);
+  assert.equal(p.commitHistory[0].sha, "sha1");
+  assert.equal(p.lastCommitAt, "2026-01-01T00:00:00.000Z", "lastCommitAt must be derived from commitHistory[0]");
+});
+
+await testAsync("projectStore: addCommitHistoryEntry with the SAME sha as the top entry is a no-op", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p3", "P3", "org/p3");
+  await store.addCommitHistoryEntry("p3", { sha: "sha1", commitDate: "2026-01-01T00:00:00.000Z" });
+  await store.addCommitHistoryEntry("p3", { sha: "sha1", commitDate: "2026-01-01T00:00:00.000Z" });
+  const p = await store.get("p3");
+  assert.equal(p.commitHistory.length, 1, "an unchanged sha must not be appended again");
+});
+
+await testAsync("projectStore: addCommitHistoryEntry with a NEW sha unshifts (newest first)", async () => {
   const store = createProjectStore(makeMockAdapter());
   await store.create("p4", "P4", "org/p4");
+  await store.addCommitHistoryEntry("p4", { sha: "sha1", commitDate: "2026-01-01T00:00:00.000Z" });
+  await store.addCommitHistoryEntry("p4", { sha: "sha2", commitDate: "2026-02-01T00:00:00.000Z" });
   const p = await store.get("p4");
-  assert.deepEqual(p.fileCache, {}, "new projects must default to an empty cache, not undefined");
+  assert.equal(p.commitHistory.length, 2);
+  assert.equal(p.commitHistory[0].sha, "sha2", "newest commit must be first");
+  assert.equal(p.commitHistory[1].sha, "sha1");
 });
 
-await testAsync("projectStore: recordPush stores a fileCache and get() returns it", async () => {
+await testAsync(`projectStore: commitHistory is capped at MAX_HISTORY (${MAX_HISTORY}) — FIFO, oldest dropped`, async () => {
   const store = createProjectStore(makeMockAdapter());
   await store.create("p5", "P5", "org/p5");
-  const cache = { "package.json": { sha: "abc", content: "{}" } };
-  await store.recordPush("p5", { markdown: "## A\nx", tokens: 10, changeSummary: "first push", fileCache: cache });
+  for (let i = 1; i <= MAX_HISTORY + 1; i++) {
+    await store.addCommitHistoryEntry("p5", { sha: `sha${i}`, commitDate: `2026-01-${String(i).padStart(2, "0")}T00:00:00.000Z` });
+  }
   const p = await store.get("p5");
-  assert.deepEqual(p.fileCache, cache);
+  assert.equal(p.commitHistory.length, MAX_HISTORY, `must never exceed ${MAX_HISTORY} entries`);
+  assert.equal(p.commitHistory[0].sha, `sha${MAX_HISTORY + 1}`, "newest entry must be present");
+  assert.ok(!p.commitHistory.some((h) => h.sha === "sha1"), "the oldest entry (sha1) must have been dropped");
 });
 
-await testAsync("projectStore: recordPush WITHOUT a fileCache arg doesn't crash and preserves the previous cache", async () => {
+await testAsync("projectStore: addCommitHistoryEntry on unknown id throws", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await assert.rejects(
+    () => store.addCommitHistoryEntry("ghost", { sha: "x", commitDate: null }),
+    /Unknown project/
+  );
+});
+
+await testAsync("projectStore: a missing commitDate is stored as null, not crashing", async () => {
   const store = createProjectStore(makeMockAdapter());
   await store.create("p6", "P6", "org/p6");
-  const cache = { "index.js": { sha: "xyz", content: "console.log(1)" } };
-  await store.recordPush("p6", { markdown: "## A\nx", tokens: 10, changeSummary: "first push", fileCache: cache });
-  await store.recordPush("p6", { markdown: "## A\ny", tokens: 12, changeSummary: "second push" });
+  await store.addCommitHistoryEntry("p6", { sha: "sha1", commitDate: undefined });
   const p = await store.get("p6");
-  assert.deepEqual(p.fileCache, cache, "omitting fileCache on a push must preserve whatever was there before, not erase it");
+  assert.equal(p.commitHistory[0].commitDate, null);
 });
 
-await testAsync("projectStore: get() on a project stored BEFORE this field existed still works (migration safety)", async () => {
+// ============================================================
+// Migration safety — legacy stored projects (old push-based shape)
+// ============================================================
+
+await testAsync("projectStore: get() on a project stored under the OLD push-based shape still works (migration safety)", async () => {
   const adapter = makeMockAdapter();
   await adapter.set({
     projects: {
@@ -207,39 +166,42 @@ await testAsync("projectStore: get() on a project stored BEFORE this field exist
         lastPushedTokens: 500,
         lastPushedAt: "2025-01-01T00:00:00.000Z",
         history: [],
+        fileCache: { "a.js": { sha: "x", content: "y" } },
       },
     },
   });
   const store = createProjectStore(adapter);
   const p = await store.get("legacy-project");
   assert.equal(p.name, "Legacy", "existing fields must still read correctly");
-  assert.deepEqual(p.fileCache, {}, "a legacy project missing fileCache must not crash — it should default to an empty object");
+  assert.deepEqual(p.commitHistory, [], "a legacy project missing commitHistory must default to an empty array, not crash");
+  assert.equal(p.lastCheckedAt, null, "a legacy project missing lastCheckedAt must default to null");
+  assert.equal(p.lastCommitAt, null, "derived lastCommitAt must be null when commitHistory is empty");
+  assert.equal(p.pinned, false, "a legacy project missing pinned must default to false");
 });
 
-await testAsync("projectStore: recordPush on a legacy project (no prior fileCache) with a new cache doesn't crash", async () => {
+await testAsync("projectStore: addCommitHistoryEntry works correctly on a legacy project with no commitHistory field at all", async () => {
   const adapter = makeMockAdapter();
   await adapter.set({
     projects: {
-      "legacy2": { name: "Legacy2", repo: "org/legacy2", lastPushedMarkdown: null, lastPushedTokens: 0, lastPushedAt: null, history: [] },
+      legacy2: { name: "Legacy2", repo: "org/legacy2", lastPushedMarkdown: null, lastPushedTokens: 0, lastPushedAt: null, history: [] },
     },
   });
   const store = createProjectStore(adapter);
-  const newCache = { "a.js": { sha: "1", content: "x" } };
-  await store.recordPush("legacy2", { markdown: "## A\nx", tokens: 5, changeSummary: "push", fileCache: newCache });
+  await store.addCommitHistoryEntry("legacy2", { sha: "sha1", commitDate: "2026-01-01T00:00:00.000Z" });
   const p = await store.get("legacy2");
-  assert.deepEqual(p.fileCache, newCache);
+  assert.equal(p.commitHistory.length, 1);
+  assert.equal(p.commitHistory[0].sha, "sha1");
 });
 
 // ============================================================
-// REFRAME — pinning (max MAX_PINNED) + GitHub commit-recency tracking
+// Pinning (max MAX_PINNED)
 // ============================================================
 
-await testAsync("projectStore: a new project starts unpinned with no lastCommitAt", async () => {
+await testAsync("projectStore: a new project starts unpinned", async () => {
   const store = createProjectStore(makeMockAdapter());
   await store.create("p7", "P7", "org/p7");
   const p = await store.get("p7");
   assert.equal(p.pinned, false);
-  assert.equal(p.lastCommitAt, null);
 });
 
 await testAsync("projectStore: setPinned(true) persists and setPinned(false) unpins", async () => {
@@ -275,31 +237,16 @@ await testAsync("projectStore: setPinned on unknown id throws", async () => {
   await assert.rejects(() => store.setPinned("ghost", true), /Unknown project/);
 });
 
-await testAsync("projectStore: updateCommitInfo records GitHub's last-push timestamp, independent of recordPush", async () => {
-  const store = createProjectStore(makeMockAdapter());
-  await store.create("p9", "P9", "org/p9");
-  await store.updateCommitInfo("p9", "2026-06-01T00:00:00.000Z");
-  const p = await store.get("p9");
-  assert.equal(p.lastCommitAt, "2026-06-01T00:00:00.000Z");
-  assert.equal(p.lastPushedAt, null, "updateCommitInfo must never touch lastPushedAt — they are different facts");
-});
-
-await testAsync("projectStore: updateCommitInfo on unknown id throws", async () => {
-  const store = createProjectStore(makeMockAdapter());
-  await assert.rejects(() => store.updateCommitInfo("ghost", "2026-01-01T00:00:00.000Z"), /Unknown project/);
-});
-
-await testAsync("projectStore: legacy project (no pinned/lastCommitAt fields at all) reads safely with sane defaults", async () => {
+await testAsync("projectStore: legacy project (no pinned field at all) reads safely with sane defaults", async () => {
   const adapter = makeMockAdapter();
   await adapter.set({
     projects: {
-      "legacy3": { name: "Legacy3", repo: "org/legacy3", lastPushedMarkdown: null, lastPushedTokens: 0, lastPushedAt: null, history: [] },
+      legacy3: { name: "Legacy3", repo: "org/legacy3", lastPushedMarkdown: null, lastPushedTokens: 0, lastPushedAt: null, history: [] },
     },
   });
   const store = createProjectStore(adapter);
   const p = await store.get("legacy3");
   assert.equal(p.pinned, false, "legacy project missing `pinned` must default to false, not crash or be undefined");
-  assert.equal(p.lastCommitAt, null, "legacy project missing `lastCommitAt` must default to null");
 });
 
 console.log(`\n${passed} test(s) passed total.`);
