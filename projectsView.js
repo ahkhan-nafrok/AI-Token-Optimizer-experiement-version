@@ -10,6 +10,17 @@ const store = createProjectStore(chromeStorageAdapter);
 
 let activeProjectId = null;
 
+// Inline icon markup — swapped in for the old ★ / ☆ / ✕ text glyphs so
+// rendering is crisp and consistent across OS emoji fonts instead of
+// relying on the system's Unicode glyph rendering. fill/stroke use
+// currentColor so existing CSS color rules (.is-pinned, :hover, etc.)
+// keep working exactly as before — no CSS class logic changed.
+// Bookmark shape reads more clearly as "pin to top" than a star did.
+const ICON_PIN =
+  '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2a1 1 0 0 0-1 1v11l4.5-2.7L12.5 14V3a1 1 0 0 0-1-1h-7Z" fill="currentColor"/></svg>';
+const ICON_X =
+  '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
 /**
  * Order projects for the list view:
  *   1. Pinned projects first (max 4), ordered by commit recency among themselves.
@@ -62,7 +73,7 @@ export function initProjectsView() {
     const projects = sortProjectsForList(await store.list());
     listEl.innerHTML = "";
     if (!projects.length) {
-      listEl.innerHTML = `<p class="hint">No projects tracked yet — add one below.</p>`;
+      listEl.innerHTML = `<div class="empty-state"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2a1 1 0 0 0-1 1v11l4.5-2.7L12.5 14V3a1 1 0 0 0-1-1h-7Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><p class="hint">No projects tracked yet — add one below.</p></div>`;
       return;
     }
     for (const p of projects) {
@@ -70,15 +81,15 @@ export function initProjectsView() {
       const row = document.createElement("div");
       row.className = "project-list-item" + (p.pinned ? " is-pinned" : "") + (neverChecked ? " is-pending" : "");
       row.innerHTML = `
-        <button class="p-pin ${p.pinned ? "is-pinned" : ""}" title="${p.pinned ? "Unpin" : "Pin to top"}">${p.pinned ? "★" : "☆"}</button>
+        <button class="p-pin ${p.pinned ? "is-pinned" : ""}" title="${p.pinned ? "Unpin" : "Pin to top"}">${ICON_PIN}</button>
         <div class="p-body">
           <div class="p-name">${escapeHtml(p.name)}${neverChecked ? '<span class="badge-pending">not checked yet</span>' : ""}</div>
           <div class="p-meta">${escapeHtml(p.repo)} · ${p.lastCommitAt ? "last commit " + timeAgo(p.lastCommitAt) : "GitHub staleness unknown"}</div>
         </div>
-        <button class="p-delete" title="Stop tracking">✕</button>
+        <button class="p-delete" title="Stop tracking">${ICON_X}</button>
       `;
       row.addEventListener("click", (e) => {
-        if (e.target.classList.contains("p-delete") || e.target.classList.contains("p-pin")) return;
+        if (e.target.closest(".p-delete") || e.target.closest(".p-pin")) return;
         openProject(p.id);
       });
       row.querySelector(".p-pin").addEventListener("click", async (e) => {
@@ -122,7 +133,7 @@ export function initProjectsView() {
       : "Last GitHub commit: unknown";
     pdLastCommit.className = "last-commit-pill" + (p.lastCommitAt ? "" : " unknown");
 
-    pdPinBtn.textContent = p.pinned ? "★ Pinned" : "☆ Pin";
+    pdPinBtn.innerHTML = `${ICON_PIN}<span>${p.pinned ? "Pinned" : "Pin"}</span>`;
     pdPinBtn.classList.toggle("is-pinned", !!p.pinned);
 
     setStatus(pdStatus, "");
