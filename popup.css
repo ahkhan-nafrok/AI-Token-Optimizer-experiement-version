@@ -1,44 +1,59 @@
-/* popup.css — Token Optimizer design system
-   Black / white / grey glassmorphism with a signature indigo→mint gradient
-   used consistently as the "compression pipeline" identity (raw -> optimized),
-   reused across the compression meter, primary buttons, and pin accents.
-   A separate cool-grey→amber staleness gradient is reserved ONLY for GitHub
-   staleness signals, so it never blends into the brand gradient's meaning. */
+/* popup.css — Token Optimizer design system v3 (monochrome)
+   Pure black / graphite / grey / white. No hue anywhere — the previous
+   indigo->mint gradient identity has been fully removed per direction.
+   All "signature" moments (primary CTA, pinned state, progress fill,
+   focus ring) now read through white-on-black contrast and motion
+   instead of color. Staleness/destructive states are distinguished by
+   weight, icon, and motion, not by hue.
+
+   No class names used by popup.js / skeletonizerView.js / projectsView.js
+   were renamed or removed — this is a token/value swap, not a structural
+   change. */
 
 :root {
   /* ---- surfaces ---- */
   --bg-base: #0a0b0d;
   --bg-base-2: #0d0e11;
-  --glass-fill: rgba(255, 255, 255, 0.05);
-  --glass-fill-hover: rgba(255, 255, 255, 0.08);
-  --glass-border: rgba(255, 255, 255, 0.10);
-  --glass-border-strong: rgba(255, 255, 255, 0.16);
+  --glass-fill: rgba(255, 255, 255, 0.045);
+  --glass-fill-hover: rgba(255, 255, 255, 0.075);
+  --glass-fill-active: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-strong: rgba(255, 255, 255, 0.17);
 
   /* ---- text ---- */
   --text-primary: #f2f3f5;
   --text-secondary: #9a9da6;
-  --text-tertiary: #6b6e76;
+  --text-tertiary: #64676f;
 
-  /* ---- brand gradient: the compression pipeline identity ---- */
-  --grad-start: #6d5dfc;
-  --grad-end: #2ee6b8;
-  --grad: linear-gradient(135deg, var(--grad-start), var(--grad-end));
-  --grad-soft: linear-gradient(135deg, rgba(109, 93, 252, 0.18), rgba(46, 230, 184, 0.18));
+  /* ---- accent: monochrome only. Off-white surface used for CTAs,
+     pinned state, progress fill, and focus rings — the "color" of this
+     UI is contrast, not hue. */
+  --accent: #f4f4f5;
+  --accent-strong: #ffffff;
+  --accent-dim: rgba(255, 255, 255, 0.10);
+  --accent-glow: rgba(255, 255, 255, 0.22);
+  --accent-ink: #0a0b0d; /* text/icon color when sitting ON the accent surface */
 
-  /* ---- experimental / warning ---- */
-  --amber: #ffb068;
+  /* ---- staleness signal: distinguished by motion + weight, not hue ---- */
+  --stale: #b9bcc4;
 
-  /* ---- staleness signal (distinct from brand gradient, on purpose) ---- */
-  --stale-cool: #7b8794;
-  --stale-warm: #ff8a65;
-  --grad-stale: linear-gradient(135deg, var(--stale-cool), var(--stale-warm));
+  /* ---- destructive: kept desaturated on purpose, weight + icon carry
+     the meaning instead of red */
+  --danger: #e4e5e8;
+
+  /* ---- motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 0.12s;
+  --dur-base: 0.2s;
+  --dur-slow: 0.6s;
 
   /* ---- misc ---- */
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 8px;
   --radius-pill: 999px;
-  --font-sans: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
@@ -49,39 +64,42 @@ html, body {
   padding: 0;
   width: 380px;
   min-height: 520px;
-  background: var(--bg-base);
+  background:
+    radial-gradient(600px 340px at 12% -10%, rgba(255, 255, 255, 0.05), transparent 60%),
+    radial-gradient(520px 320px at 100% 30%, rgba(255, 255, 255, 0.03), transparent 55%),
+    var(--bg-base);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 13px;
   letter-spacing: 0.1px;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
   position: relative;
   overflow-x: hidden;
 }
 
-/* ---------------- background glow blobs (glass depth) ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------- background glow (glass depth, monochrome) ---------------- */
 .bg-glow {
   position: fixed;
   border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.35;
+  filter: blur(90px);
+  opacity: 0.10;
   pointer-events: none;
   z-index: 0;
+  transition: opacity var(--dur-slow) var(--ease-out);
+  background: radial-gradient(circle, #ffffff, transparent 70%);
 }
-.bg-glow-a {
-  width: 260px;
-  height: 260px;
-  top: -80px;
-  left: -60px;
-  background: radial-gradient(circle, var(--grad-start), transparent 70%);
-}
-.bg-glow-b {
-  width: 220px;
-  height: 220px;
-  bottom: -60px;
-  right: -60px;
-  background: radial-gradient(circle, var(--grad-end), transparent 70%);
-  opacity: 0.25;
-}
+.bg-glow-a { width: 280px; height: 280px; top: -100px; left: -80px; }
+.bg-glow-b { width: 240px; height: 240px; bottom: -80px; right: -80px; opacity: 0.07; }
 
 /* ---------------- header ---------------- */
 .app-header {
@@ -95,18 +113,33 @@ html, body {
   gap: 8px;
 }
 .brand-mark {
+  position: relative;
   width: 18px;
   height: 18px;
   border-radius: 5px;
-  background: var(--grad);
-  box-shadow: 0 0 14px rgba(109, 93, 252, 0.45);
+  background: linear-gradient(135deg, #ffffff, #9a9da6);
+  box-shadow: 0 0 14px var(--accent-glow);
   flex-shrink: 0;
+}
+.brand-mark::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  background: var(--accent-ink);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 8h3M11 8h3M8 2v3M8 11v3' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 8h3M11 8h3M8 2v3M8 11v3' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 .brand h1 {
   font-size: 14.5px;
   font-weight: 600;
   margin: 0;
-  letter-spacing: 0.2px;
+  letter-spacing: -0.1px;
 }
 
 /* ---------------- tabs ---------------- */
@@ -128,26 +161,46 @@ html, body {
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out);
 }
-.tab-btn:hover { color: var(--text-primary); background: var(--glass-fill); }
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--glass-fill);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
 .tab-btn.active {
   color: var(--text-primary);
   background: var(--glass-fill-hover);
   border-color: var(--glass-border);
 }
+.tab-btn:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px rgba(255, 255, 255, 0.45);
+}
 
 .tab-panel { display: none; position: relative; z-index: 1; padding: 0 14px 18px; }
-.tab-panel.active { display: block; }
+.tab-panel.active {
+  display: block;
+  animation: panel-in var(--dur-base) var(--ease-out);
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* ---------------- glass card ---------------- */
 .glass-card {
   background: var(--glass-fill);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
   padding: 16px;
+  transition: border-color var(--dur-base) var(--ease-out);
 }
 
 /* ---------------- fields ---------------- */
@@ -161,7 +214,7 @@ html, body {
 }
 input[type="text"], input[type="password"] {
   width: 100%;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.035);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -169,44 +222,181 @@ input[type="text"], input[type="password"] {
   font-size: 12px;
   padding: 9px 10px;
   outline: none;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out);
+}
+/* Chrome forces a white/yellow autofill background that ignores normal
+   background-color rules — this was the white "owner/repo" field bug.
+   A huge inset box-shadow paints over it; the absurd transition delay is
+   the standard trick to stop Chrome re-asserting it after paint. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #14151a inset !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+  caret-color: var(--text-primary);
+  transition: background-color 9999s ease-in-out 0s;
+}
+input[type="text"]:hover, input[type="password"]:hover {
+  border-color: var(--glass-border-strong);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
 }
 input[type="text"]:focus, input[type="password"]:focus {
-  border-color: var(--grad-start);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.10);
 }
+input::placeholder { color: var(--text-tertiary); }
+
 .field-collapsible summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
   font-size: 11.5px;
   color: var(--text-secondary);
   list-style: none;
   margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--glass-border);
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out);
+}
+.field-collapsible summary:hover {
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.03);
+}
+.field-collapsible[open] summary {
+  border-style: solid;
+  border-color: var(--glass-border);
 }
 .field-collapsible summary::-webkit-details-marker { display: none; }
-.field-collapsible summary::before { content: "▸ "; }
-.field-collapsible[open] summary::before { content: "▾ "; }
-.summary-hint { color: var(--text-tertiary); font-size: 10.5px; }
+.field-collapsible summary::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 3l6 5-6 5' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 3l6 5-6 5' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.field-collapsible[open] summary::before { transform: rotate(90deg); }
+.add-project-trigger summary::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 2v12M2 8h12' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 2v12M2 8h12' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.add-project-trigger[open] summary::before { transform: rotate(45deg); }
+.summary-hint { color: var(--text-tertiary); font-size: 10.5px; margin-left: auto; }
 .hint { color: var(--text-tertiary); font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
-.mono { font-family: var(--font-mono); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* The two "add project" inputs used to sit directly adjacent with zero
+   gap (no wrapping .field class, no margin) — this is what made the
+   owner/repo field look glued to the name field in the screenshot. */
+.new-project-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.add-project-trigger .btn-primary { margin-top: 2px; }
 
 /* ---------------- buttons ---------------- */
 button { font-family: var(--font-sans); }
 
+/* Primary: solid off-white surface on black — the contrast IS the accent.
+   Diagonal sheen + lift + glow on hover for the "premium" motion the
+   gradient used to carry, now done entirely in greyscale. */
 .btn-primary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   width: 100%;
   border: none;
   border-radius: var(--radius-md);
   padding: 11px 14px;
   font-size: 12.5px;
   font-weight: 600;
-  color: #0a0b0d;
-  background: var(--grad);
+  letter-spacing: 0.1px;
+  color: var(--accent-ink);
+  background: linear-gradient(110deg, #e9e9eb 0%, #ffffff 45%, #e9e9eb 100%);
+  background-size: 220% 100%;
+  background-position: 0% 0%;
   cursor: pointer;
-  transition: filter 0.15s ease, transform 0.1s ease;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: background-position var(--dur-slow) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
-.btn-primary:hover { filter: brightness(1.08); box-shadow: 0 0 20px rgba(109, 93, 252, 0.3); }
-.btn-primary:active { transform: scale(0.98); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; box-shadow: none; }
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.5) 50%, transparent 80%);
+  transform: translateX(-120%);
+  transition: transform var(--dur-slow) var(--ease-out);
+  z-index: -1;
+}
+.btn-primary:hover {
+  background-position: 100% 0%;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset, 0 6px 22px var(--accent-glow);
+  transform: translateY(-1px);
+}
+.btn-primary:hover::after { transform: translateX(120%); }
+.btn-primary:active { transform: translateY(0) scale(0.98); }
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+.btn-primary:disabled::after { display: none; }
+
+/* CSS-only leading icons — both buttons have static text in popup.html,
+   so this needs no JS/HTML change. -webkit-mask lets a single SVG shape
+   inherit the button's own ink color instead of shipping a colored asset. */
+#build-btn::before,
+#pd-refresh-btn::before {
+  content: "";
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  background: var(--accent-ink);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+#build-btn::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6 7 1.5Z'/%3E%3Ccircle cx='12.5' cy='3' r='1.1'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7 5.6 5.6 7 1.5Z'/%3E%3Ccircle cx='12.5' cy='3' r='1.1'/%3E%3C/svg%3E");
+}
+#pd-refresh-btn::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2v3.2h-3.2' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2v3.2h-3.2' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+#pd-refresh-btn:hover::before { transform: rotate(180deg); }
+#pd-refresh-btn:disabled::before { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .btn-ghost {
   background: transparent;
@@ -217,17 +407,25 @@ button { font-family: var(--font-sans); }
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
-.btn-ghost:hover { background: var(--glass-fill-hover); border-color: var(--glass-border-strong); }
+.btn-ghost:hover {
+  background: var(--glass-fill-hover);
+  border-color: var(--glass-border-strong);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+.btn-ghost:active { transform: scale(0.98); }
 
 /* ---------------- status ---------------- */
 .status {
   font-size: 11.5px;
   color: var(--text-secondary);
   padding: 8px 0;
+  transition: color var(--dur-base) var(--ease-out);
 }
-.status.error { color: #ff8a8a; }
+.status.error { color: var(--danger); font-weight: 600; }
 
 .result { margin-top: 14px; }
 .result-header {
@@ -238,16 +436,15 @@ button { font-family: var(--font-sans); }
 }
 .token-count-value {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
-  font-weight: 600;
-  background: var(--grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-weight: 700;
+  color: var(--accent-strong);
 }
 .trimmed-note { font-size: 10.5px; color: var(--text-tertiary); }
 
 .compression-meter {
+  position: relative;
   height: 4px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.06);
@@ -255,10 +452,24 @@ button { font-family: var(--font-sans); }
   margin-bottom: 10px;
 }
 .compression-meter-fill {
+  position: relative;
   height: 100%;
   width: 70%;
-  background: var(--grad);
+  background: linear-gradient(90deg, #c7c9d1, #ffffff);
   border-radius: var(--radius-pill);
+  overflow: hidden;
+  transition: width var(--dur-slow) var(--ease-out);
+}
+.compression-meter-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(10, 11, 13, 0.4), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 2.2s var(--ease-out) infinite;
+}
+@keyframes shimmer {
+  to { transform: translateX(220%); }
 }
 
 .entry-note {
@@ -266,7 +477,7 @@ button { font-family: var(--font-sans); }
   font-size: 10.5px;
   color: var(--text-secondary);
   white-space: pre-wrap;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   padding: 8px;
@@ -278,7 +489,7 @@ button { font-family: var(--font-sans); }
 textarea#output {
   width: 100%;
   height: 160px;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.28);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -287,6 +498,12 @@ textarea#output {
   padding: 10px;
   resize: vertical;
   margin-bottom: 10px;
+  transition: border-color var(--dur-base) var(--ease-out);
+}
+textarea#output:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.10);
 }
 
 /* ---------------- project list ---------------- */
@@ -301,19 +518,29 @@ textarea#output {
   border-radius: var(--radius-md);
   padding: 10px 12px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
-.project-list-item:hover { background: var(--glass-fill-hover); }
+.project-list-item:hover {
+  background: var(--glass-fill-hover);
+  transform: translateX(1px);
+}
+.project-list-item:active { transform: scale(0.995); }
 
-/* Pinned rows get a subtle tint, not a separate section/divider — per spec,
-   the distinction is spacing/tint only, never a structural break. */
+/* Pinned rows: spacing/tint only, no divider or header per spec —
+   now a plain white-tinted glass rather than a colored gradient. */
 .project-list-item.is-pinned {
-  background: var(--grad-soft);
-  border-color: rgba(109, 93, 252, 0.28);
+  background: var(--accent-dim);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.project-list-item.is-pinned:hover {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .project-list-item.is-pending:not(.is-pinned) {
-  border-color: rgba(123, 135, 148, 0.35);
+  border-color: rgba(255, 255, 255, 0.14);
+  border-style: dashed;
 }
 
 .p-body { flex: 1; min-width: 0; }
@@ -331,37 +558,89 @@ textarea#output {
   font-size: 10.5px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Pending badge: distinguished from normal rows by a dashed border (above)
+   and a pulsing outline dot — motion + shape carry the "needs attention"
+   meaning instead of a warning hue. */
 .badge-pending {
-  background: var(--grad-stale);
-  color: #0a0b0d;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
   flex-shrink: 0;
+}
+.badge-pending::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  border: 1px solid var(--stale);
+  background: transparent;
+  animation: pulse-attn 2.4s var(--ease-out) infinite;
+}
+@keyframes pulse-attn {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
 }
 
 .p-pin, .p-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   background: transparent;
   border: none;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 13px;
-  padding: 4px 6px;
+  padding: 0;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out),
+              transform var(--dur-fast) var(--ease-spring);
 }
-.p-pin:hover, .p-delete:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.06); }
-.p-pin.is-pinned { color: var(--grad-end); }
+.p-pin:hover, .p-delete:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.07); }
+.p-delete:hover { color: var(--accent-strong); background: rgba(255, 255, 255, 0.12); }
+.p-pin:active, .p-delete:active { transform: scale(0.85); }
+.p-pin.is-pinned { color: var(--accent-strong); }
+.p-pin.is-pinned:hover { transform: scale(1.12) rotate(-8deg); }
+
+/* Shared icon sizing for the inline SVGs rendered by projectsView.js
+   (replaces the old star/x Unicode glyphs — crisp at any DPI, no
+   dependency on the OS's emoji font rendering). */
+.icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  display: block;
+}
+.p-delete .icon { width: 11px; height: 11px; }
+.pin-btn .icon { width: 12px; height: 12px; }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 10px;
+  color: var(--text-tertiary);
+  border: 1px dashed var(--glass-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+.empty-state .icon { width: 22px; height: 22px; opacity: 0.5; }
+.empty-state .hint { margin: 0; }
 
 /* ---------------- project detail ---------------- */
 .project-detail { margin-top: 4px; }
@@ -371,29 +650,36 @@ textarea#output {
   align-items: flex-start;
   gap: 8px;
 }
-.project-detail h2 { font-size: 15px; margin: 0 0 2px; }
+.project-detail h2 { font-size: 15px; margin: 0 0 2px; letter-spacing: -0.1px; }
 
 .pin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: transparent;
   border: 1px solid var(--glass-border);
   color: var(--text-secondary);
   border-radius: var(--radius-pill);
-  padding: 5px 10px;
+  padding: 5px 11px 5px 9px;
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: background var(--dur-base) var(--ease-out),
+              color var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
 }
+.pin-btn:hover { border-color: var(--glass-border-strong); transform: translateY(-1px); }
 .pin-btn.is-pinned {
-  color: #0a0b0d;
-  background: var(--grad);
+  color: var(--accent-ink);
+  background: linear-gradient(135deg, #ffffff, #d8d9dc);
   border-color: transparent;
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 
-/* Two plain neutral fact lines — "Last checked" / "Last GitHub commit" —
-   deliberately NOT pills. These are neutral facts, not a status judgement,
-   so no colored badge treatment (that's what the old push-status pill was
-   for, and it no longer exists). */
+/* Two plain neutral fact lines — not pills, not colored — these are facts,
+   not a status judgement. */
 .pd-status-row {
   display: flex;
   flex-direction: column;
@@ -404,6 +690,7 @@ textarea#output {
 .fact-line {
   font-size: 11.5px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
 }
 .fact-line.unknown { color: var(--text-tertiary); font-style: italic; }
@@ -414,6 +701,9 @@ textarea#output {
 .history-entry {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   padding: 3px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: color var(--dur-base) var(--ease-out);
 }
+.history-entry:hover { color: var(--text-secondary); }
