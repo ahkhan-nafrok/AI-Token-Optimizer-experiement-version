@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Token Optimizer — Repo Skeletonizer",
-  "version": "0.2.0",
-  "description": "Compress a GitHub repo into a token-budgeted context pack and maintain it as claude.ai Project Knowledge, so context is cached once instead of re-paid every chat.",
-  "permissions": ["clipboardWrite", "storage", "downloads", "activeTab"],
-  "host_permissions": ["https://api.github.com/*", "https://claude.ai/*"],
+  "version": "0.3.0",
+  "description": "Compress a GitHub repo into a token-budgeted context pack, and track upstream GitHub repos with commit history. Pure GitHub — no claude.ai page integration.",
+  "permissions": ["clipboardWrite", "storage"],
+  "host_permissions": ["https://api.github.com/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -12,12 +12,5 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://claude.ai/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ]
+  }
 }
