@@ -1,8 +1,7 @@
 // test/projectsView.integration.test.mjs
 // Runs the REAL projectsView.js against a fake DOM + fake chrome.storage +
-// mocked GitHub fetch. Updated for the reframe: pinning, GitHub-commit-recency
-// sorting (via meta.pushed_at, piggybacked on the existing repo-meta call —
-// no extra network call), and the new pd-pin-btn / pd-last-commit elements.
+// mocked GitHub fetch (commits endpoint only — this module no longer touches
+// build.js/getTree/getReadme/getFileContent at all).
 //
 // Run with: node test/projectsView.integration.test.mjs
 
@@ -70,10 +69,8 @@ function makeFakeElement(id) {
 
 const elementIds = [
   "project-list", "new-project-btn", "new-project-name", "new-project-repo", "new-project-form",
-  "project-detail", "pd-name", "pd-repo", "pd-push-status", "pd-last-commit", "pd-pin-btn",
-  "pd-refresh-btn", "pd-status", "pd-diff",
-  "pd-diff-summary", "pd-capacity-warning", "pd-copy-btn", "pd-download-btn",
-  "pd-autoupload-btn", "pd-push-result", "pd-history",
+  "project-detail", "pd-name", "pd-repo", "pd-last-checked", "pd-last-commit", "pd-pin-btn",
+  "pd-refresh-btn", "pd-status", "pd-history",
 ];
 
 const elements = {};
@@ -87,15 +84,9 @@ globalThis.document = {
   createElement: (tag) => makeFakeElement(`created-${tag}`),
 };
 
-if (!globalThis.navigator) {
-  Object.defineProperty(globalThis, "navigator", { value: {}, writable: true, configurable: true });
-}
-globalThis.navigator.clipboard = { writeText: async () => {} };
-
 globalThis.alert = (msg) => { throw new Error(`alert() was called (should not happen in this test): ${msg}`); };
 globalThis.confirm = () => true;
 
-let downloadCalls = 0;
 globalThis.chrome = {
   storage: {
     local: {
@@ -103,52 +94,23 @@ globalThis.chrome = {
       set(obj, cb) { Object.assign(chromeStorageMock, obj); cb(); },
     },
   },
-  downloads: {
-    download: (opts, cb) => { downloadCalls++; cb(); },
-  },
-  tabs: {
-    query: async () => [],
-  },
   runtime: { lastError: null },
 };
 let chromeStorageMock = {};
 
-globalThis.URL.createObjectURL = () => "blob:fake";
-globalThis.URL.revokeObjectURL = () => {};
-globalThis.Blob = class { constructor(parts, opts) { this.parts = parts; this.opts = opts; } };
-
-// ---------- Fake GitHub API ----------
-function b64(s) { return Buffer.from(s, "utf-8").toString("base64"); }
-const PKG_JSON = JSON.stringify({ name: "fake-pkg", version: "1.0.0", main: "index.js" });
-const INDEX_JS = "console.log('hello');";
-const FAKE_PUSHED_AT = "2026-07-15T12:00:00Z"; // simulated "last commit on GitHub" timestamp
-
+// ---------- Fake GitHub API — commits endpoint only ----------
 function jsonResponse(obj) {
   return { ok: true, status: 200, headers: { get: () => null }, json: async () => obj };
 }
 
-let fetchCallCounts = { "package.json": 0, "index.js": 0 };
+let commitCallCount = 0;
+let mockSha = "sha-initial";
+let mockDate = "2026-07-01T00:00:00Z";
 globalThis.fetch = async (url) => {
   const u = String(url);
-  if (/\/repos\/[^/]+\/[^/]+$/.test(u) && !u.includes("/git/") && !u.includes("/readme") && !u.includes("/contents/")) {
-    return jsonResponse({ default_branch: "main", description: "Fake", language: "JavaScript", pushed_at: FAKE_PUSHED_AT });
-  }
-  if (u.includes("/git/trees/")) {
-    return jsonResponse({
-      tree: [
-        { type: "blob", path: "package.json", size: PKG_JSON.length, sha: "sha-pkg-1" },
-        { type: "blob", path: "index.js", size: 20, sha: "sha-index-1" },
-      ],
-    });
-  }
-  if (u.includes("/readme")) return jsonResponse({ content: b64("# Fake\n"), encoding: "base64" });
-  if (u.includes("/contents/package.json")) {
-    fetchCallCounts["package.json"]++;
-    return jsonResponse({ content: b64(PKG_JSON), encoding: "base64" });
-  }
-  if (u.includes("/contents/index.js")) {
-    fetchCallCounts["index.js"]++;
-    return jsonResponse({ content: b64(INDEX_JS), encoding: "base64" });
+  if (u.includes("/commits?per_page=1")) {
+    commitCallCount++;
+    return jsonResponse([{ sha: mockSha, commit: { committer: { date: mockDate } } }]);
   }
   throw new Error(`Unhandled mock URL: ${u}`);
 };
@@ -166,61 +128,71 @@ elements["new-project-repo"].value = "fake/repo";
 await elements["new-project-btn"].dispatch("click");
 console.log("  ok  - project created without throwing");
 
-console.log("\nChecking pd-push-status pill shows 'pending' immediately on open, before any refresh...");
-assert.ok(elements["pd-push-status"].classList.contains("pending"), "a never-pushed project must show the pending pill on open");
-assert.ok(elements["pd-push-status"].textContent.includes("Not yet pushed"), `got: ${elements["pd-push-status"].textContent}`);
-assert.ok(elements["pd-last-commit"].textContent.includes("unknown"), "before any check, last-commit must read as unknown, not guessed");
-console.log(`  ok  - pd-push-status: "${elements["pd-push-status"].textContent}"`);
+console.log("\nConfirming the first-add auto-check populated history entry #1 immediately...");
+assert.equal(commitCallCount, 1, "creating a project must trigger exactly one commit-fetch call, automatically");
+assert.ok(!elements["pd-last-checked"].textContent.includes("never"), "last-checked must no longer read 'never' after the auto-check");
+assert.ok(!elements["pd-last-commit"].textContent.includes("unknown"), "last-commit must no longer read 'unknown' after the auto-check");
+assert.ok(
+  chromeStorageMock.projects["fake-project"].commitHistory.length === 1,
+  "history entry #1 must be recorded in storage immediately on add, not waiting for a manual check"
+);
+console.log(`  ok  - pd-last-checked: "${elements["pd-last-checked"].textContent}"`);
 console.log(`  ok  - pd-last-commit: "${elements["pd-last-commit"].textContent}"`);
 
-console.log("\nFirst 'Check for Updates' click (cold cache)...");
+console.log("\nClicking 'Check for Updates' again with the SAME upstream commit (no-op expected)...");
+commitCallCount = 0;
 await elements["pd-refresh-btn"].dispatch("click");
-assert.equal(fetchCallCounts["package.json"], 1, "cold refresh should fetch the manifest once");
-assert.equal(fetchCallCounts["index.js"], 1, "cold refresh should fetch the entry file once");
-assert.ok(elements["pd-diff-summary"].textContent.includes("No version pushed yet"), `expected instructive first-push copy, got: ${elements["pd-diff-summary"].textContent}`);
-assert.ok(elements["pd-diff"].classList.contains("needs-baseline"), "the diff box must carry needs-baseline so CSS can emphasize the push buttons");
-console.log(`  ok  - pd-diff-summary: "${elements["pd-diff-summary"].textContent}"`);
-
-console.log("\nConfirming the commit-recency signal was captured on check WITHOUT requiring a push (piggybacked on the repo-meta call, zero extra network calls)...");
-assert.ok(!elements["pd-last-commit"].textContent.includes("unknown"), "after a check, last-commit must no longer read as unknown");
-assert.ok(chromeStorageMock.projects["fake-project"].lastCommitAt, "lastCommitAt must be recorded in storage immediately on check, independent of pushing");
-console.log(`  ok  - pd-last-commit updated: "${elements["pd-last-commit"].textContent}"`);
-
-console.log("\nClicking Copy to push it (real confirmPush -> real store.recordPush)...");
-await elements["pd-copy-btn"].dispatch("click");
-console.log("  ok  - copy/push completed without throwing");
-assert.ok(
-  Object.keys(chromeStorageMock.projects["fake-project"].fileCache).length === 2,
-  "after a push, the project's fileCache in storage should contain both cached files"
+assert.equal(commitCallCount, 1, "a manual check must still make exactly one GitHub call");
+assert.equal(
+  chromeStorageMock.projects["fake-project"].commitHistory.length,
+  1,
+  "an unchanged commit must not add a duplicate history entry"
 );
+console.log("  ok  - unchanged commit: lastChecked updates, history stays deduped at 1 entry");
 
-console.log("\nConfirming pd-push-status flips to 'pushed' after the push...");
-assert.ok(elements["pd-push-status"].classList.contains("pushed"), "status pill must flip to pushed after a real push");
-assert.ok(!elements["pd-push-status"].classList.contains("pending"), "pending class must be removed once pushed");
-assert.ok(!elements["pd-diff"].classList.contains("needs-baseline"), "needs-baseline must clear after re-opening a now-pushed project");
-console.log(`  ok  - pd-push-status: "${elements["pd-push-status"].textContent}"`);
-
-console.log("\nSecond 'Check for Updates' click (warm cache — repo unchanged)...");
-fetchCallCounts = { "package.json": 0, "index.js": 0 };
+console.log("\nClicking 'Check for Updates' with a NEW upstream commit...");
+mockSha = "sha-changed";
+mockDate = "2026-07-20T00:00:00Z";
 await elements["pd-refresh-btn"].dispatch("click");
-assert.equal(fetchCallCounts["package.json"], 0, "warm refresh must NOT refetch the unchanged manifest");
-assert.equal(fetchCallCounts["index.js"], 0, "warm refresh must NOT refetch the unchanged entry file");
-assert.ok(elements["pd-diff-summary"].textContent.includes("No changes detected"), `expected no-changes summary, got: ${elements["pd-diff-summary"].textContent}`);
-assert.ok(elements["pd-diff-summary"].textContent.includes("unchanged (skipped)"), "the UI should surface the cache-skip count to the user");
-console.log(`  ok  - pd-diff-summary: "${elements["pd-diff-summary"].textContent}"`);
+assert.equal(
+  chromeStorageMock.projects["fake-project"].commitHistory.length,
+  2,
+  "a real new commit must append a second history entry"
+);
+assert.equal(chromeStorageMock.projects["fake-project"].commitHistory[0].sha, "sha-changed", "newest commit must be first");
+assert.ok(elements["pd-history"].innerHTML.includes("sha-cha"), "the rendered history should reflect the new commit");
+console.log("  ok  - new commit correctly appended, newest-first");
 
 console.log("\n--- Pinning ---");
 console.log("Pinning the active project via the detail-view pin button...");
 await elements["pd-pin-btn"].dispatch("click");
-const storedProject = chromeStorageMock.projects["fake-project"];
-assert.equal(storedProject.pinned, true, "pin button click must persist pinned=true");
+assert.equal(chromeStorageMock.projects["fake-project"].pinned, true, "pin button click must persist pinned=true");
 console.log("  ok  - project pinned, persisted to storage");
 
 console.log("\n--- Multi-project list scenario (scalability + sort check) ---");
-console.log("Adding a SECOND project (never checked) to test list ordering through real rendering...");
+console.log("Adding a SECOND project (never checked, simulating a failed auto-check) to test list ordering...");
+// Make the auto-check fail for the second project so it stays never-checked,
+// exercising the non-blocking "project still created" path.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  throw new Error("simulated GitHub failure for second project's auto-check");
+};
 elements["new-project-name"].value = "Zzz Second Project";
 elements["new-project-repo"].value = "fake/repo2";
 await elements["new-project-btn"].dispatch("click");
+globalThis.fetch = originalFetch;
+
+assert.equal(
+  chromeStorageMock.projects["zzz-second-project"] !== undefined,
+  true,
+  "the project must still be created even though its first auto-check failed"
+);
+assert.equal(
+  chromeStorageMock.projects["zzz-second-project"].commitHistory.length,
+  0,
+  "a failed auto-check must leave commitHistory empty, not crash the add flow"
+);
+console.log("  ok  - a failed first-check doesn't block project creation (non-blocking, as specified)");
 
 const listRows = elements["project-list"]._children;
 assert.equal(listRows.length, 2, "both tracked projects should render as rows");
@@ -236,7 +208,4 @@ console.log("  ok  - pinned project sorts first regardless of name or recency");
 console.log("  ok  - unpinned never-checked project shows the not-checked badge");
 
 console.log("\nAll projectsView integration checks passed.");
-console.log("\nNOTE — what this test does NOT verify: pixel-accurate rendering, real click");
-console.log("physics, or the auto-upload content-script path (that one talks to a real");
-console.log("claude.ai tab via chrome.tabs.sendMessage, which has no meaningful fake here).");
-console.log("Those need your eyes in an actual loaded extension, same as before.");
+
