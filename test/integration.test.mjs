@@ -1,11 +1,3 @@
-// test/integration.test.mjs
-// Simulates the real user flow for the Project Knowledge Manager: add a
-// project, auto-fetch commit #1, check again with an unchanged mock commit
-// (no-op), then a changed mock commit (appends, cap respected). Mocked
-// GitHub fetch throughout — no live network calls, no rate-limit risk.
-//
-// Run with: node test/integration.test.mjs
-
 import assert from "node:assert/strict";
 import { getLatestCommit, parseRepoInput } from "../lib/github.js";
 import { createProjectStore } from "../lib/projectStore.js";
@@ -39,8 +31,6 @@ globalThis.fetch = async (url) => {
   throw new Error(`Unhandled mock URL in integration test: ${u}`);
 };
 
-/** Mirrors projectsView.js's checkForUpdates(): one GitHub call, always
- * updateLastChecked, conditionally addCommitHistoryEntry. */
 async function checkForUpdates(store, id, repo) {
   const { owner, repo: repoName } = parseRepoInput(repo);
   const latest = await getLatestCommit(owner, repoName, null);
@@ -59,7 +49,6 @@ async function run() {
   assert.deepEqual(before.commitHistory, []);
   console.log("  ok  - new project starts with no check history");
 
-  // Simulates the auto-fetch that happens immediately on adding a project.
   await checkForUpdates(store, "is-npm", "sindresorhus/is-npm");
   const afterFirst = await store.get("is-npm");
   assert.ok(afterFirst.lastCheckedAt, "lastCheckedAt must be set after the first check");
@@ -67,7 +56,6 @@ async function run() {
   assert.equal(afterFirst.commitHistory[0].sha, "sha-AAA");
   console.log("  ok  - first-add auto-fetch populates history entry #1");
 
-  // Simulate a second "Check for Updates" where the repo hasn't moved.
   const firstCheckedAt = afterFirst.lastCheckedAt;
   await new Promise((r) => setTimeout(r, 5));
   await checkForUpdates(store, "is-npm", "sindresorhus/is-npm");
@@ -76,7 +64,6 @@ async function run() {
   assert.notEqual(afterSecond.lastCheckedAt, firstCheckedAt, "lastCheckedAt must still update even when the commit is unchanged");
   console.log("  ok  - unchanged repo: lastCheckedAt always updates, commitHistory stays deduped");
 
-  // Simulate a real new commit landing upstream.
   mockSha = "sha-BBB";
   mockDate = "2026-06-15T00:00:00Z";
   await checkForUpdates(store, "is-npm", "sindresorhus/is-npm");
@@ -86,7 +73,6 @@ async function run() {
   assert.equal(afterThird.lastCommitAt, "2026-06-15T00:00:00Z", "lastCommitAt must be derived from the newest entry");
   console.log("  ok  - a real commit change appends a new history entry, newest first");
 
-  // Push past MAX_HISTORY (6) to confirm the FIFO cap holds under the real flow.
   for (let i = 0; i < 6; i++) {
     mockSha = `sha-EXTRA-${i}`;
     mockDate = `2026-07-0${i + 1}T00:00:00Z`;
