@@ -1,9 +1,3 @@
-// test/skeletonizer.contextupgrade.test.mjs
-// Covers the reframe additions: monorepo manifest discovery, Tier 2 signature
-// extraction, local-import relationship extraction, and the pre-fetch size
-// guard (never download a huge file just to discard it after the fact).
-// Run with: node test/skeletonizer.contextupgrade.test.mjs
-
 import assert from "node:assert/strict";
 import {
   findManifestFiles,
@@ -31,8 +25,6 @@ function test(name, fn) {
     console.error(`        ${e.message}`);
   }
 }
-
-// ---------- Monorepo manifest discovery ----------
 
 test("findManifestFiles: discovers multiple package.json files in a monorepo, root first", () => {
   const paths = new Set(["package.json", "packages/api/package.json", "packages/web/package.json", "README.md"]);
@@ -86,8 +78,6 @@ test("detectEntryFileCandidates: root manifest (empty dir) behaves exactly as be
   assert.deepEqual(candidates, ["index.js"]);
 });
 
-// ---------- Pre-fetch size guard ----------
-
 test("shouldSkipFetchForSize: flags a file over the byte guard for skipping, using tree size only (no fetch needed to know)", () => {
   const keptByPath = { "big.js": { size: ENTRY_SIZE_PREFETCH_GUARD_BYTES + 1 } };
   assert.equal(shouldSkipFetchForSize("big.js", keptByPath), true);
@@ -105,7 +95,7 @@ test("shouldSkipFetchForSize: missing size info falls through to false (never gu
 
 test("classifyEntryFiles: a size-guard-skipped path (never fetched) is classified as skeletonized with an estimated line count, not 'failed'", () => {
   const candidates = ["huge.js"];
-  const contentByPath = {}; // never fetched at all — no key present
+  const contentByPath = {};
   const keptByPath = { "huge.js": { size: 40000 } };
   const result = classifyEntryFiles(candidates, [], contentByPath, keptByPath);
   assert.equal(result.failed.length, 0, "a size-guard skip is a deliberate decision, not a failure");
@@ -120,8 +110,6 @@ test("classifyEntryFiles: a path missing from contentByPath with no oversized tr
   assert.equal(result.failed.length, 1);
   assert.equal(result.skeletonized.length, 0);
 });
-
-// ---------- Tier 2 signature extraction ----------
 
 test("extractSignatures: pulls function/class/export signatures out of a JS file", () => {
   const content = [
@@ -165,8 +153,6 @@ test("classifyEntryFiles: an over-cap JS file gets real signatures attached, not
   assert.equal(result.skeletonized.length, 1);
   assert.ok(result.skeletonized[0].signatures.some((s) => s.signature.includes("realFunction")));
 });
-
-// ---------- Relationship / import extraction ----------
 
 test("extractImports: surfaces LOCAL relative imports only, ignores external packages (already covered by Dependencies)", () => {
   const content = [
