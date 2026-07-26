@@ -16,13 +16,9 @@ const outputEl = document.getElementById("output");
 const copyBtn = document.getElementById("copy-btn");
 
 let lastMarkdown = "";
-// Kept so "Generate as..." can reuse the same fetched content (SHA-checked,
-// same defensive rules as everywhere else in the pipeline) instead of
-// re-fetching from GitHub for a repo that was just built.
 let lastBuildResult = null;
 let lastBuiltRepo = null;
 
-// Restore saved token + last repo input, if any.
 chrome.storage.local.get(["ghToken", "lastRepo"], (data) => {
   if (data.ghToken) tokenInput.value = data.ghToken;
   if (data.lastRepo) repoInput.value = data.lastRepo;
@@ -67,13 +63,6 @@ function showOutput(markdown, result) {
   resultEl.hidden = false;
 }
 
-/**
- * Shared by both the Default build and "Generate as..." — reuses
- * lastBuildResult.fileCache when the repo input hasn't changed since the
- * last build, so picking a template right after a default build costs zero
- * extra GitHub calls for unchanged files. If the repo input HAS changed,
- * this is just a normal fresh build (empty cache), same as clicking Build.
- */
 async function runBuild() {
   const repo = repoInput.value.trim();
   if (!repo) {
@@ -149,4 +138,4 @@ copyBtn.addEventListener("click", async () => {
   }
 });
 
-} // end initSkeletonizerView
+}
