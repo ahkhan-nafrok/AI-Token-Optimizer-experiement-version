@@ -1,7 +1,3 @@
-// test/sortProjectsForList.test.mjs
-// Pure logic test for the new pinned + GitHub-commit-recency list ordering.
-// Run with: node test/sortProjectsForList.test.mjs
-
 import assert from "node:assert/strict";
 import { sortProjectsForList } from "../projectsView.js";
 
