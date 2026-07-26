@@ -66,7 +66,6 @@
   </section>
 
   <!-- ===================== TAB 2: PROJECTS (Module 2) — pure GitHub tracker ===================== -->
-  <!-- UNCHANGED — no edits made in this tab. -->
   <section id="tab-projects" class="tab-panel">
     <div id="project-list"></div>
 
@@ -97,6 +96,25 @@
       <div id="pd-status" class="status" hidden></div>
 
       <div id="pd-history" class="history-box"></div>
+    </div>
+
+    <!-- ============ GitHub Overview: account-level, always visible ============ -->
+    <div class="glass-card gh-overview">
+      <div class="gh-overview-section" id="gh-calendar-section">
+        <div class="gh-overview-header">
+          <h3>Contribution Calendar</h3>
+          <button id="gh-calendar-refresh-btn" class="btn-ghost btn-small" type="button">Refresh</button>
+        </div>
+        <div id="gh-calendar-body" class="gh-calendar-body"></div>
+      </div>
+
+      <div class="gh-overview-section" id="gh-recent-section">
+        <div class="gh-overview-header">
+          <h3>Recently Pushed</h3>
+          <button id="gh-recent-refresh-btn" class="btn-ghost btn-small" type="button">Refresh</button>
+        </div>
+        <div id="gh-recent-body" class="gh-recent-body"></div>
+      </div>
     </div>
   </section>
 
