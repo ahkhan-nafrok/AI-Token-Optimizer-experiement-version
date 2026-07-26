@@ -29,10 +29,6 @@ function makeMockAdapter() {
   };
 }
 
-// ============================================================
-// Basic create / list / remove
-// ============================================================
-
 await testAsync("projectStore: create then list round-trips correctly", async () => {
   const store = createProjectStore(makeMockAdapter());
   await store.create("aml-motors", "AML Motors", "org/aml-motors");
@@ -57,10 +53,6 @@ await testAsync("projectStore: remove deletes the project", async () => {
   await store.remove("p3");
   assert.equal(await store.get("p3"), null);
 });
-
-// ============================================================
-// updateLastChecked — always fires, independent of commit history
-// ============================================================
 
 await testAsync("projectStore: updateLastChecked sets a fresh timestamp unconditionally", async () => {
   const store = createProjectStore(makeMockAdapter());
@@ -88,10 +80,6 @@ await testAsync("projectStore: updateLastChecked on unknown id throws", async ()
   const store = createProjectStore(makeMockAdapter());
   await assert.rejects(() => store.updateLastChecked("ghost"), /Unknown project/);
 });
-
-// ============================================================
-// addCommitHistoryEntry — SHA-deduped, capped at MAX_HISTORY, FIFO
-// ============================================================
 
 await testAsync("projectStore: addCommitHistoryEntry adds the first entry and derives lastCommitAt", async () => {
   const store = createProjectStore(makeMockAdapter());
@@ -151,10 +139,6 @@ await testAsync("projectStore: a missing commitDate is stored as null, not crash
   assert.equal(p.commitHistory[0].commitDate, null);
 });
 
-// ============================================================
-// Migration safety — legacy stored projects (old push-based shape)
-// ============================================================
-
 await testAsync("projectStore: get() on a project stored under the OLD push-based shape still works (migration safety)", async () => {
   const adapter = makeMockAdapter();
   await adapter.set({
@@ -192,10 +176,6 @@ await testAsync("projectStore: addCommitHistoryEntry works correctly on a legacy
   assert.equal(p.commitHistory.length, 1);
   assert.equal(p.commitHistory[0].sha, "sha1");
 });
-
-// ============================================================
-// Pinning (max MAX_PINNED)
-// ============================================================
 
 await testAsync("projectStore: a new project starts unpinned", async () => {
   const store = createProjectStore(makeMockAdapter());
