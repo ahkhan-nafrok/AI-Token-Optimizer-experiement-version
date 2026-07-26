@@ -404,7 +404,6 @@ button { font-family: var(--font-sans); }
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 .btn-ghost:active { transform: scale(0.98); }
-.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ---------------- status ---------------- */
 .status {
@@ -701,107 +700,106 @@ textarea#output:focus {
   flex: 1;
 }
 
-/* ---------------- GitHub Overview: Contribution Calendar + Recently Pushed ----------------
-   Account-level widgets, always visible at the bottom of the Projects tab.
-   Monochrome, consistent with the rest of the design system — no green,
-   binary contributed/not-contributed states only. */
-
+/* ---------------- GitHub Overview (bottom of Projects tab) ----------------
+   Account-level additions: current-month contribution calendar + recently
+   pushed repos. Purely additive — nothing above this point was touched. */
 .gh-overview {
-  margin-top: 14px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
+  margin-top: 14px;
 }
-
-.gh-overview-section:not(:last-child) {
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
+.gh-overview-card { padding: 14px; }
 .gh-overview-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 10px;
-  gap: 8px;
 }
 .gh-overview-header h3 {
-  font-size: 12px;
-  margin: 0;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: 0.1px;
+  margin: 0;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
-.btn-small {
-  padding: 5px 10px;
-  font-size: 10.5px;
+.gh-refresh-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
 }
+.gh-refresh-btn::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2v3.2h-3.2' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2v3.2h-3.2' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.gh-refresh-btn:hover::before { transform: rotate(180deg); }
+.gh-refresh-btn:disabled::before { animation: spin 0.9s linear infinite; }
 
-/* Calendar grid: column-per-week (GitHub's real geometry), Sun top -> Sat
-   bottom, chronological left-to-right, clipped to the current UTC month. */
-.gh-calendar-grid {
+/* Contribution calendar: columns = weeks, rows = Sun..Sat (top to bottom),
+   binary states only — filled (contributed) vs dim (no contribution).
+   No hue, consistent with the rest of the monochrome system. Blank padding
+   cells (outside the month) are fully transparent, never a third state. */
+.gh-cal-grid {
   display: flex;
   gap: 3px;
+  justify-content: flex-start;
   overflow-x: auto;
   padding-bottom: 2px;
 }
-.gh-calendar-week {
+.gh-cal-col {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  flex-shrink: 0;
 }
-.gh-calendar-day {
-  width: 11px;
-  height: 11px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.05);
+.gh-cal-cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
 }
-/* Binary states only — no 4-shade intensity gradient. "Contributed" reads
-   through the same white-tint language used for pinned rows elsewhere. */
-.gh-calendar-day.is-contributed {
-  background: linear-gradient(135deg, #ffffff, #c7c9d1);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15) inset;
+.gh-cal-cell.is-active {
+  background: var(--accent-strong);
+  box-shadow: 0 0 6px var(--accent-glow);
 }
-.gh-calendar-day.is-empty {
-  background: rgba(255, 255, 255, 0.05);
+.gh-cal-cell.is-empty {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
 }
-/* Days outside the current month (padding cells GitHub includes to keep
-   every week a full Sun-Sat column) — blank, not a third visual state. */
-.gh-calendar-day.is-outside {
+.gh-cal-cell.is-blank {
   background: transparent;
 }
 
 .gh-recent-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .gh-recent-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
+  align-items: center;
   background: var(--glass-fill);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
 }
-.gh-recent-name {
-  font-size: 12px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.gh-recent-meta {
-  font-size: 10.5px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.gh-token-prompt {
-  margin: 0;
+.gh-recent-item:hover {
+  background: var(--glass-fill-hover);
+  border-color: var(--glass-border-strong);
 }
