@@ -1,4 +1,3 @@
-// test/build.cache.test.mjs
 import assert from "node:assert/strict";
 import { buildTier1 } from "../lib/build.js";
 
