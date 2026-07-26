@@ -17,7 +17,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .then(sendResponse)
     .catch((e) => sendResponse({ success: false, reason: `Unexpected error: ${e.message}` }));
 
-  return true; // keep the async sendResponse channel open
+  return true;
 });
 
 async function attemptUpload(filename, content) {
