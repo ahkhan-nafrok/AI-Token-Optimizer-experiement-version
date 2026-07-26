@@ -1,10 +1,21 @@
 // projectsView.js
-// Project Knowledge Manager — pure GitHub repo tracker. No claude.ai
-// integration, no push/diff flow. "Check for Updates" is a single
+// Project Knowledge Manager — pure GitHub repo tracker, plus two account-level
+// "GitHub Overview" widgets (Contribution Calendar, Recently Pushed). No
+// claude.ai integration, no push/diff flow. "Check for Updates" is a single
 // lightweight GitHub call (lib/github.js#getLatestCommit), not a Tier 1 build.
-import { getLatestCommit, parseRepoInput } from "./lib/github.js";
+import { getLatestCommit, parseRepoInput, getContributionCalendar, getRecentRepos } from "./lib/github.js";
 import { createProjectStore } from "./lib/projectStore.js";
 import { chromeStorageAdapter } from "./lib/storageAdapter.js";
+import {
+  CALENDAR_CACHE_KEY,
+  RECENT_REPOS_CACHE_KEY,
+  RECENT_REPOS_COUNT,
+  RECENT_REPOS_FETCH_COUNT,
+  getUTCMonthRange,
+  isCalendarStale,
+  normalizeCalendarWeeks,
+  rankRecentRepos,
+} from "./lib/githubOverview.js";
 
 const store = createProjectStore(chromeStorageAdapter);
 
@@ -63,10 +74,28 @@ export function initProjectsView() {
   const pdStatus = document.getElementById("pd-status");
   const pdHistory = document.getElementById("pd-history");
 
+  // GitHub Overview widgets — account-level, always visible regardless of
+  // whether a project detail card is open.
+  const calendarBody = document.getElementById("gh-calendar-body");
+  const calendarRefreshBtn = document.getElementById("gh-calendar-refresh-btn");
+  const recentBody = document.getElementById("gh-recent-body");
+  const recentRefreshBtn = document.getElementById("gh-recent-refresh-btn");
+
   function setStatus(el, msg, isError = false) {
     el.hidden = !msg;
     el.textContent = msg;
     el.classList.toggle("error", isError);
+  }
+
+  /** The ONE place projectsView.js reads the GitHub token. Reads fresh from
+   * storage every time (never caches it in a module-level variable) so it
+   * always reflects whatever skeletonizerView.js most recently wrote to the
+   * same `ghToken` key — shared storage, not shared logic, per the existing
+   * architecture rule. */
+  async function getStoredToken() {
+    const data = await chromeStorageAdapter.get(["ghToken"]);
+    const token = (data.ghToken || "").trim();
+    return token || null;
   }
 
   async function renderList() {
@@ -157,13 +186,16 @@ export function initProjectsView() {
    * Shared check logic used by both the new-project flow and the manual
    * refresh button: one GitHub call for the latest commit, then always
    * updateLastChecked, then conditionally addCommitHistoryEntry (which
-   * itself no-ops if the sha hasn't changed).
+   * itself no-ops if the sha hasn't changed). Now reads the real stored
+   * token instead of hardcoding null, so private/rate-limited repos work
+   * and this tool benefits from the same 5,000/hr bump Skeletonizer gets.
    */
   async function checkForUpdates(id) {
     const p = await store.get(id);
     if (!p) return;
     const { owner, repo } = parseRepoInput(p.repo);
-    const latest = await getLatestCommit(owner, repo, null);
+    const token = await getStoredToken();
+    const latest = await getLatestCommit(owner, repo, token);
     await store.updateLastChecked(id);
     await store.addCommitHistoryEntry(id, latest);
   }
@@ -227,7 +259,150 @@ export function initProjectsView() {
     }
   });
 
+  // ===========================================================================
+  // GitHub Overview: Contribution Calendar
+  // ===========================================================================
+
+  function renderTokenPrompt(container) {
+    container.innerHTML = `<p class="hint gh-token-prompt">Add a token to see this.</p>`;
+  }
+
+  function renderCalendarGrid(cache) {
+    const normalized = normalizeCalendarWeeks(cache.weeks, cache.monthKey);
+    const grid = normalized
+      .map(
+        (week) =>
+          `<div class="gh-calendar-week">${week.contributionDays
+            .map((day) => {
+              const cls = !day.inMonth ? "is-outside" : day.contributed ? "is-contributed" : "is-empty";
+              return `<div class="gh-calendar-day ${cls}" title="${escapeHtml(day.date)}"></div>`;
+            })
+            .join("")}</div>`
+      )
+      .join("");
+    calendarBody.innerHTML = `<div class="gh-calendar-grid">${grid}</div>`;
+  }
+
+  async function fetchAndCacheCalendar(token) {
+    const { from, to, monthKey } = getUTCMonthRange();
+    const weeks = await getContributionCalendar(token, from, to);
+    const cache = { monthKey, weeks };
+    await chromeStorageAdapter.set({ [CALENDAR_CACHE_KEY]: cache });
+    return cache;
+  }
+
+  /**
+   * Render whatever's cached. Only reaches the network automatically when
+   * the cached month has rolled over (a correctness issue, not a "did the
+   * data change" question) — otherwise this is manual-refresh-only, same as
+   * Recently Pushed, so opening the Projects tab never silently burns a
+   * rate-limit call.
+   */
+  async function renderCalendar({ forceRefresh = false } = {}) {
+    const token = await getStoredToken();
+    if (!token) {
+      renderTokenPrompt(calendarBody);
+      return;
+    }
+
+    const cacheData = await chromeStorageAdapter.get([CALENDAR_CACHE_KEY]);
+    let cache = cacheData[CALENDAR_CACHE_KEY] || null;
+
+    if (forceRefresh || isCalendarStale(cache)) {
+      try {
+        cache = await fetchAndCacheCalendar(token);
+      } catch (e) {
+        calendarBody.innerHTML = `<p class="hint">${escapeHtml(e.message)}</p>`;
+        return;
+      }
+    }
+    renderCalendarGrid(cache);
+  }
+
+  calendarRefreshBtn.addEventListener("click", async () => {
+    calendarRefreshBtn.disabled = true;
+    calendarBody.innerHTML = `<p class="hint">Loading...</p>`;
+    try {
+      await renderCalendar({ forceRefresh: true });
+    } finally {
+      calendarRefreshBtn.disabled = false;
+    }
+  });
+
+  // ===========================================================================
+  // GitHub Overview: Recently Pushed
+  // ===========================================================================
+
+  function renderRecentList(repos) {
+    if (!repos.length) {
+      recentBody.innerHTML = `<p class="hint">No repos found on this account.</p>`;
+      return;
+    }
+    recentBody.innerHTML = `<div class="gh-recent-list">${repos
+      .map(
+        (r) => `
+        <div class="gh-recent-item">
+          <div class="gh-recent-name">${escapeHtml(r.full_name)}</div>
+          <div class="gh-recent-meta">Active ${timeAgo(r.activityAt)}</div>
+        </div>`
+      )
+      .join("")}</div>`;
+  }
+
+  async function fetchAndCacheRecentRepos(token) {
+    const raw = await getRecentRepos(token, RECENT_REPOS_FETCH_COUNT);
+    const ranked = rankRecentRepos(raw, RECENT_REPOS_COUNT);
+    await chromeStorageAdapter.set({
+      [RECENT_REPOS_CACHE_KEY]: { fetchedAt: new Date().toISOString(), repos: ranked },
+    });
+    return ranked;
+  }
+
+  /** Manual refresh only — never auto-refetches on tab open, so this never
+   * silently burns a rate-limit call just from opening the Projects tab. */
+  async function renderRecentlyPushed({ forceRefresh = false } = {}) {
+    const token = await getStoredToken();
+    if (!token) {
+      renderTokenPrompt(recentBody);
+      return;
+    }
+
+    if (forceRefresh) {
+      try {
+        const ranked = await fetchAndCacheRecentRepos(token);
+        renderRecentList(ranked);
+      } catch (e) {
+        recentBody.innerHTML = `<p class="hint">${escapeHtml(e.message)}</p>`;
+      }
+      return;
+    }
+
+    const cacheData = await chromeStorageAdapter.get([RECENT_REPOS_CACHE_KEY]);
+    const cached = cacheData[RECENT_REPOS_CACHE_KEY];
+    if (cached && Array.isArray(cached.repos)) {
+      renderRecentList(cached.repos);
+      return;
+    }
+
+    // No cache at all yet (fresh install / never refreshed) — manual-only
+    // means manual-only, including the very first load. No network call
+    // happens until the person clicks Refresh themselves.
+    recentBody.innerHTML = `<p class="hint">Click Refresh to load your recently pushed repos.</p>`;
+  }
+
+  recentRefreshBtn.addEventListener("click", async () => {
+    recentRefreshBtn.disabled = true;
+    recentBody.innerHTML = `<p class="hint">Loading...</p>`;
+    try {
+      await renderRecentlyPushed({ forceRefresh: true });
+    } finally {
+      recentRefreshBtn.disabled = false;
+    }
+  });
+
   renderList();
+  renderCalendar();
+  renderRecentlyPushed();
 }
 
 function slugify(s) {
