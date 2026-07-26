@@ -226,10 +226,6 @@ input[type="text"], input[type="password"] {
               background var(--dur-base) var(--ease-out),
               box-shadow var(--dur-base) var(--ease-out);
 }
-/* Chrome forces a white/yellow autofill background that ignores normal
-   background-color rules — this was the white "owner/repo" field bug.
-   A huge inset box-shadow paints over it; the absurd transition delay is
-   the standard trick to stop Chrome re-asserting it after paint. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
@@ -302,9 +298,6 @@ input::placeholder { color: var(--text-tertiary); }
 .hint { color: var(--text-tertiary); font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* The two "add project" inputs used to sit directly adjacent with zero
-   gap (no wrapping .field class, no margin) — this is what made the
-   owner/repo field look glued to the name field in the screenshot. */
 .new-project-fields {
   display: flex;
   flex-direction: column;
@@ -316,9 +309,6 @@ input::placeholder { color: var(--text-tertiary); }
 /* ---------------- buttons ---------------- */
 button { font-family: var(--font-sans); }
 
-/* Primary: solid off-white surface on black — the contrast IS the accent.
-   Diagonal sheen + lift + glow on hover for the "premium" motion the
-   gradient used to carry, now done entirely in greyscale. */
 .btn-primary {
   position: relative;
   display: flex;
@@ -368,9 +358,6 @@ button { font-family: var(--font-sans); }
 }
 .btn-primary:disabled::after { display: none; }
 
-/* CSS-only leading icons — both buttons have static text in popup.html,
-   so this needs no JS/HTML change. -webkit-mask lets a single SVG shape
-   inherit the button's own ink color instead of shipping a colored asset. */
 #build-btn::before,
 #pd-refresh-btn::before {
   content: "";
@@ -417,6 +404,7 @@ button { font-family: var(--font-sans); }
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 .btn-ghost:active { transform: scale(0.98); }
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ---------------- status ---------------- */
 .status {
@@ -528,8 +516,6 @@ textarea#output:focus {
 }
 .project-list-item:active { transform: scale(0.995); }
 
-/* Pinned rows: spacing/tint only, no divider or header per spec —
-   now a plain white-tinted glass rather than a colored gradient. */
 .project-list-item.is-pinned {
   background: var(--accent-dim);
   border-color: rgba(255, 255, 255, 0.22);
@@ -565,9 +551,6 @@ textarea#output:focus {
   text-overflow: ellipsis;
 }
 
-/* Pending badge: distinguished from normal rows by a dashed border (above)
-   and a pulsing outline dot — motion + shape carry the "needs attention"
-   meaning instead of a warning hue. */
 .badge-pending {
   display: inline-flex;
   align-items: center;
@@ -616,9 +599,6 @@ textarea#output:focus {
 .p-pin.is-pinned { color: var(--accent-strong); }
 .p-pin.is-pinned:hover { transform: scale(1.12) rotate(-8deg); }
 
-/* Shared icon sizing for the inline SVGs rendered by projectsView.js
-   (replaces the old star/x Unicode glyphs — crisp at any DPI, no
-   dependency on the OS's emoji font rendering). */
 .icon {
   width: 13px;
   height: 13px;
@@ -678,8 +658,6 @@ textarea#output:focus {
   box-shadow: 0 4px 14px var(--accent-glow);
 }
 
-/* Two plain neutral fact lines — not pills, not colored — these are facts,
-   not a status judgement. */
 .pd-status-row {
   display: flex;
   flex-direction: column;
@@ -721,4 +699,109 @@ textarea#output:focus {
 
 .template-picker .template-option {
   flex: 1;
+}
+
+/* ---------------- GitHub Overview: Contribution Calendar + Recently Pushed ----------------
+   Account-level widgets, always visible at the bottom of the Projects tab.
+   Monochrome, consistent with the rest of the design system — no green,
+   binary contributed/not-contributed states only. */
+
+.gh-overview {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.gh-overview-section:not(:last-child) {
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.gh-overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+.gh-overview-header h3 {
+  font-size: 12px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.1px;
+}
+
+.btn-small {
+  padding: 5px 10px;
+  font-size: 10.5px;
+}
+
+/* Calendar grid: column-per-week (GitHub's real geometry), Sun top -> Sat
+   bottom, chronological left-to-right, clipped to the current UTC month. */
+.gh-calendar-grid {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.gh-calendar-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.gh-calendar-day {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.05);
+}
+/* Binary states only — no 4-shade intensity gradient. "Contributed" reads
+   through the same white-tint language used for pinned rows elsewhere. */
+.gh-calendar-day.is-contributed {
+  background: linear-gradient(135deg, #ffffff, #c7c9d1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15) inset;
+}
+.gh-calendar-day.is-empty {
+  background: rgba(255, 255, 255, 0.05);
+}
+/* Days outside the current month (padding cells GitHub includes to keep
+   every week a full Sun-Sat column) — blank, not a third visual state. */
+.gh-calendar-day.is-outside {
+  background: transparent;
+}
+
+.gh-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gh-recent-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+.gh-recent-name {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gh-recent-meta {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.gh-token-prompt {
+  margin: 0;
 }
