@@ -1,23 +1,20 @@
 // projectsView.js
-// Project Knowledge Manager — pure GitHub repo tracker, PLUS an account-level
-// "GitHub Overview" (current-month contribution calendar + recently pushed
-// repos). The tracker logic below (create/pin/remove/check-for-updates) is
-// UNCHANGED from before. The Overview additions read the same `ghToken` key
-// Skeletonizer already writes to chrome.storage.local — shared storage, not
-// shared logic — and store their own account-level state under two new,
-// separate keys (ghContributionCache, ghRecentRepos), never touching the
-// `projects` key or projectStore.js at all.
-import { getLatestCommit, parseRepoInput, ghGraphQL, getMyRecentRepos } from "./lib/github.js";
+// Tab 2 — Projects. A manually curated tracked-repo list: add any public
+// repo, or your own private repos (needs a token with private-repo scope).
+// Pin up to 4; the rest sort as "recently pushed" by commit recency. Change
+// tracking (lastCheckedAt, commitHistory, never-checked-bubbles-up) is
+// unchanged from the old Project Knowledge Manager — just rewired onto this
+// tracked-repo model instead of GitHub's own "pinned profile" concept.
+//
+// The old account-level "GitHub Overview" block (contribution calendar +
+// recently-pushed-via-/user/repos) that used to live at the bottom of this
+// tab is gone — the calendar moved to Pulse (Tab 1), and "recently pushed"
+// here is now just this same tracked list's unpinned tail, sorted by commit
+// recency (sortProjectsForList already does this).
+import { getLatestCommit, getRepoMeta, parseRepoInput } from "./lib/github.js";
 import { createProjectStore } from "./lib/projectStore.js";
 import { chromeStorageAdapter } from "./lib/storageAdapter.js";
-import {
-  getCurrentUtcMonthRange,
-  CONTRIBUTION_QUERY,
-  parseContributionCalendar,
-  buildMonthGrid,
-  isCalendarCacheStale,
-  rankRecentRepos,
-} from "./lib/githubOverview.js";
+import { getToken } from "./lib/tokenVault.js";
 
 const store = createProjectStore(chromeStorageAdapter);
 
@@ -31,7 +28,8 @@ const ICON_X =
 /**
  * Order projects for the list view:
  *   1. Pinned projects first (max 4), ordered by commit recency among themselves.
- *   2. Unpinned projects after, also ordered by commit recency.
+ *   2. Unpinned projects after — this is the "recently pushed" section — also
+ *      ordered by commit recency.
  * Within either group, a project that has never been checked (no lastCommitAt
  * yet) sorts first in that group — it needs attention first. Pure and
  * exported so it's unit-testable without a DOM.
@@ -53,14 +51,6 @@ function compareByCommitRecency(a, b) {
   return new Date(b.lastCommitAt).getTime() - new Date(a.lastCommitAt).getTime();
 }
 
-/** Reads the same `ghToken` key Skeletonizer already writes to
- * chrome.storage.local — no separate token UI for this tab, no shared logic,
- * just both tools independently reading one storage key. */
-async function getStoredToken() {
-  const data = await chromeStorageAdapter.get(["ghToken"]);
-  return (data.ghToken || "").trim() || null;
-}
-
 export function initProjectsView() {
   const listEl = document.getElementById("project-list");
   const newBtn = document.getElementById("new-project-btn");
@@ -71,6 +61,7 @@ export function initProjectsView() {
   const detailEl = document.getElementById("project-detail");
   const pdName = document.getElementById("pd-name");
   const pdRepo = document.getElementById("pd-repo");
+  const pdMeta = document.getElementById("pd-meta");
   const pdLastChecked = document.getElementById("pd-last-checked");
   const pdLastCommit = document.getElementById("pd-last-commit");
   const pdPinBtn = document.getElementById("pd-pin-btn");
@@ -78,39 +69,39 @@ export function initProjectsView() {
   const pdStatus = document.getElementById("pd-status");
   const pdHistory = document.getElementById("pd-history");
 
-  // ---- GitHub Overview elements ----
-  const calTokenPrompt = document.getElementById("gh-calendar-token-prompt");
-  const calGridEl = document.getElementById("gh-calendar-grid");
-  const calStatusEl = document.getElementById("gh-calendar-status");
-  const calRefreshBtn = document.getElementById("gh-calendar-refresh-btn");
-
-  const recentTokenPrompt = document.getElementById("gh-recent-token-prompt");
-  const recentListEl = document.getElementById("gh-recent-list");
-  const recentStatusEl = document.getElementById("gh-recent-status");
-  const recentRefreshBtn = document.getElementById("gh-recent-refresh-btn");
-
   function setStatus(el, msg, isError = false) {
     el.hidden = !msg;
     el.textContent = msg;
     el.classList.toggle("error", isError);
   }
 
+  function repoMetaLine(p) {
+    if (!p.repoMeta) return "";
+    const parts = [];
+    parts.push(p.repoMeta.isPrivate ? "Private" : "Public");
+    if (p.repoMeta.language) parts.push(p.repoMeta.language);
+    if (typeof p.repoMeta.stars === "number") parts.push(`★ ${p.repoMeta.stars}`);
+    return parts.join(" · ");
+  }
+
   async function renderList() {
     const projects = sortProjectsForList(await store.list());
     listEl.innerHTML = "";
     if (!projects.length) {
-      listEl.innerHTML = `<div class="empty-state"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2a1 1 0 0 0-1 1v11l4.5-2.7L12.5 14V3a1 1 0 0 0-1-1h-7Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><p class="hint">No projects tracked yet — add one below.</p></div>`;
+      listEl.innerHTML = `<div class="empty-state"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2a1 1 0 0 0-1 1v11l4.5-2.7L12.5 14V3a1 1 0 0 0-1-1h-7Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><p class="hint">No repos tracked yet — add one below.</p></div>`;
       return;
     }
     for (const p of projects) {
       const neverChecked = !p.lastCommitAt;
       const row = document.createElement("div");
       row.className = "project-list-item" + (p.pinned ? " is-pinned" : "") + (neverChecked ? " is-pending" : "");
+      const metaLine = repoMetaLine(p);
       row.innerHTML = `
-        <button class="p-pin ${p.pinned ? "is-pinned" : ""}" title="${p.pinned ? "Unpin" : "Pin to top"}">${ICON_PIN}</button>
+        <button class="p-pin ${p.pinned ? "is-pinned" : ""}" title="${p.pinned ? "Unpin" : "Pin to top (max 4)"}">${ICON_PIN}</button>
         <div class="p-body">
           <div class="p-name">${escapeHtml(p.name)}${neverChecked ? '<span class="badge-pending">not checked yet</span>' : ""}</div>
           <div class="p-meta">${escapeHtml(p.repo)} · ${p.lastCommitAt ? "last commit " + timeAgo(p.lastCommitAt) : "GitHub staleness unknown"}</div>
+          ${metaLine ? `<div class="p-meta p-meta-repo">${escapeHtml(metaLine)}</div>` : ""}
         </div>
         <button class="p-delete" title="Stop tracking">${ICON_X}</button>
       `;
@@ -130,7 +121,7 @@ export function initProjectsView() {
       });
       row.querySelector(".p-delete").addEventListener("click", async (e) => {
         e.stopPropagation();
-        if (!confirm(`Stop tracking "${p.name}"? This only removes it from this extension — nothing on GitHub is affected.`)) return;
+        if (!confirm(`Stop tracking "${p.name}"? This only removes it from GITSTREAK — nothing on GitHub is affected.`)) return;
         await store.remove(p.id);
         if (activeProjectId === p.id) {
           activeProjectId = null;
@@ -149,6 +140,8 @@ export function initProjectsView() {
 
     pdName.textContent = p.name;
     pdRepo.textContent = p.repo;
+    pdMeta.textContent = repoMetaLine(p);
+    pdMeta.hidden = !repoMetaLine(p);
 
     pdLastChecked.textContent = p.lastCheckedAt
       ? `Last checked: ${timeAgo(p.lastCheckedAt)}`
@@ -157,7 +150,7 @@ export function initProjectsView() {
     pdLastCommit.textContent = p.lastCommitAt
       ? `Last GitHub commit: ${timeAgo(p.lastCommitAt)}`
       : "Last GitHub commit: unknown";
-    pdLastCommit.className = "last-commit-pill" + (p.lastCommitAt ? "" : " unknown");
+    pdLastCommit.className = "fact-line" + (p.lastCommitAt ? "" : " unknown");
 
     pdPinBtn.innerHTML = `${ICON_PIN}<span>${p.pinned ? "Pinned" : "Pin"}</span>`;
     pdPinBtn.classList.toggle("is-pinned", !!p.pinned);
@@ -169,9 +162,9 @@ export function initProjectsView() {
         p.commitHistory
           .map(
             (h) =>
-              `<div class="history-entry">${escapeHtml(h.sha.slice(0, 7))} — ${
-                h.commitDate ? new Date(h.commitDate).toLocaleString() : "unknown date"
-              }</div>`
+              `<div class="history-entry">${
+                h.sha ? escapeHtml(h.sha.slice(0, 7)) : "unknown sha"
+              } — ${h.commitDate ? new Date(h.commitDate).toLocaleString() : "unknown date"}</div>`
           )
           .join("")
       : `<p class="hint">No commit history yet — click Check for Updates.</p>`;
@@ -181,17 +174,42 @@ export function initProjectsView() {
 
   /**
    * Shared check logic used by both the new-project flow and the manual
-   * refresh button: one GitHub call for the latest commit, then always
-   * updateLastChecked, then conditionally addCommitHistoryEntry (which
-   * itself no-ops if the sha hasn't changed).
+   * refresh button.
+   *
+   * `lastCheckedAt` is stamped FIRST, before the network call — per spec,
+   * it must be stamped "every time you check a repo, regardless of
+   * outcome." Stamping it only after a successful fetch would mean a repo
+   * that keeps failing (rate limit, network blip, revoked token) silently
+   * stops showing as recently checked, which defeats the point of that
+   * field: you'd have no way to tell "checked recently, no changes" apart
+   * from "hasn't been reachable in days."
+   *
+   * If the commit fetch throws, it propagates to the caller (both callers
+   * already catch and surface it) — but the stamp above has already been
+   * saved, so the failure is visible without corrupting change-tracking
+   * facts. Token is read from the vault so private repos work when a
+   * token with private scope is connected; a public repo still works fine
+   * with token=null.
    */
   async function checkForUpdates(id) {
     const p = await store.get(id);
     if (!p) return;
     const { owner, repo } = parseRepoInput(p.repo);
-    const latest = await getLatestCommit(owner, repo, null);
+    const token = await getToken(chromeStorageAdapter);
+
     await store.updateLastChecked(id);
+
+    const latest = await getLatestCommit(owner, repo, token);
     await store.addCommitHistoryEntry(id, latest);
+
+    try {
+      const meta = await getRepoMeta(owner, repo, token);
+      await store.updateRepoMeta(id, meta);
+    } catch (e) {
+      // Repo-meta is display-only — a failure here must never block or
+      // corrupt the change-tracking facts already saved above.
+      console.warn(`Couldn't refresh repo metadata for ${p.repo}: ${e.message}`);
+    }
   }
 
   newBtn.addEventListener("click", async () => {
@@ -210,14 +228,18 @@ export function initProjectsView() {
       await renderList();
       await openProject(id);
 
-      // Immediately fetch commit #1 so history isn't empty on first open.
-      // Non-blocking: if this fails (bad repo name, rate limit), the
-      // project still exists — just surface the error inline, no rollback.
+      // Immediately fetch commit #1 + repo meta so the card isn't empty on
+      // first open. Non-blocking: if this fails (bad repo name, rate
+      // limit, private repo with no token), the project still exists —
+      // just surface the error inline, no rollback. lastCheckedAt will
+      // still have been stamped inside checkForUpdates even on failure.
       try {
         await checkForUpdates(id);
         await renderList();
         if (activeProjectId === id) await openProject(id);
       } catch (err) {
+        await renderList();
+        if (activeProjectId === id) await openProject(id);
         setStatus(pdStatus, `Project added, but the first check failed: ${err.message}`, true);
       }
     } catch (e) {
@@ -247,145 +269,15 @@ export function initProjectsView() {
       await renderList();
       await openProject(activeProjectId);
     } catch (e) {
+      await renderList();
+      await openProject(activeProjectId);
       setStatus(pdStatus, e.message, true);
     } finally {
       pdRefreshBtn.disabled = false;
     }
   });
 
-  // ---------------------------------------------------------------------
-  // GitHub Overview: contribution calendar (manual refresh + automatic
-  // month-rollover refetch) and recently pushed (manual refresh only).
-  // ---------------------------------------------------------------------
-
-  function renderCalendarGrid(weeks) {
-    calGridEl.innerHTML = weeks
-      .map((week) => {
-        const cellsHtml = week
-          .map((cell) => {
-            const stateClass = cell ? (cell.contributed ? "is-active" : "is-empty") : "is-blank";
-            const titleAttr = cell ? ` title="${escapeHtml(cell.date)}"` : "";
-            return `<div class="gh-cal-cell ${stateClass}"${titleAttr}></div>`;
-          })
-          .join("");
-        return `<div class="gh-cal-col">${cellsHtml}</div>`;
-      })
-      .join("");
-  }
-
-  /**
-   * forceRefresh=true means the user clicked the refresh button. Even
-   * without a forced refresh, a cache from a previous UTC month is always
-   * treated as stale and refetched automatically — the calendar view is a
-   * correctness concern (which month is "this month"), not a "did anything
-   * change" question that should wait for a manual click.
-   */
-  async function loadCalendar(forceRefresh = false) {
-    const token = await getStoredToken();
-    if (!token) {
-      calTokenPrompt.hidden = false;
-      calGridEl.hidden = true;
-      setStatus(calStatusEl, "");
-      return;
-    }
-    calTokenPrompt.hidden = true;
-    calGridEl.hidden = false;
-
-    const stored = await chromeStorageAdapter.get(["ghContributionCache"]);
-    const cache = stored.ghContributionCache || null;
-    const stale = isCalendarCacheStale(cache);
-
-    if (!forceRefresh && !stale) {
-      const range = getCurrentUtcMonthRange();
-      renderCalendarGrid(buildMonthGrid(cache.dayMap, range));
-      setStatus(calStatusEl, "");
-      return;
-    }
-
-    setStatus(calStatusEl, "Fetching contributions...");
-    calRefreshBtn.disabled = true;
-    try {
-      const range = getCurrentUtcMonthRange();
-      const data = await ghGraphQL(CONTRIBUTION_QUERY, { from: range.from, to: range.to }, token);
-      const dayMap = parseContributionCalendar(data);
-      await chromeStorageAdapter.set({
-        ghContributionCache: { monthKey: range.monthKey, dayMap, fetchedAt: new Date().toISOString() },
-      });
-      renderCalendarGrid(buildMonthGrid(dayMap, range));
-      setStatus(calStatusEl, "");
-    } catch (e) {
-      setStatus(calStatusEl, e.message, true);
-    } finally {
-      calRefreshBtn.disabled = false;
-    }
-  }
-
-  function renderRecentList(repos) {
-    if (!repos.length) {
-      recentListEl.innerHTML = `<p class="hint">No repos found.</p>`;
-      return;
-    }
-    recentListEl.innerHTML = repos
-      .map(
-        (r) => `
-        <div class="gh-recent-item">
-          <div class="p-body">
-            <div class="p-name">${escapeHtml(r.name)}</div>
-            <div class="p-meta">${escapeHtml(r.fullName)} · ${r.effectiveIso ? timeAgo(r.effectiveIso) : "unknown"}</div>
-          </div>
-        </div>`
-      )
-      .join("");
-  }
-
-  /** Manual-refresh-only: no auto-fetch on tab open, so opening the Projects
-   * tab never silently spends a rate-limit call. A cached result (from the
-   * last manual refresh) is shown until the button is clicked again. */
-  async function loadRecentRepos(forceRefresh = false) {
-    const token = await getStoredToken();
-    if (!token) {
-      recentTokenPrompt.hidden = false;
-      recentListEl.hidden = true;
-      return;
-    }
-    recentTokenPrompt.hidden = true;
-    recentListEl.hidden = false;
-
-    const stored = await chromeStorageAdapter.get(["ghRecentRepos"]);
-    const cache = stored.ghRecentRepos || null;
-
-    if (!forceRefresh && cache) {
-      renderRecentList(cache.repos);
-      return;
-    }
-    if (!forceRefresh && !cache) {
-      // No cache yet and not an explicit refresh click — nothing to show
-      // until the user asks for it, consistent with manual-refresh-only.
-      recentListEl.innerHTML = `<p class="hint">Click refresh to load your recently pushed repos.</p>`;
-      return;
-    }
-
-    setStatus(recentStatusEl, "Fetching recent repos...");
-    recentRefreshBtn.disabled = true;
-    try {
-      const repos = await getMyRecentRepos(token);
-      const ranked = rankRecentRepos(repos, 2);
-      await chromeStorageAdapter.set({ ghRecentRepos: { repos: ranked, fetchedAt: new Date().toISOString() } });
-      renderRecentList(ranked);
-      setStatus(recentStatusEl, "");
-    } catch (e) {
-      setStatus(recentStatusEl, e.message, true);
-    } finally {
-      recentRefreshBtn.disabled = false;
-    }
-  }
-
-  calRefreshBtn.addEventListener("click", () => loadCalendar(true));
-  recentRefreshBtn.addEventListener("click", () => loadRecentRepos(true));
-
   renderList();
-  loadCalendar(false);
-  loadRecentRepos(false);
 }
 
 function slugify(s) {
