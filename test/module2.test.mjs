@@ -39,6 +39,7 @@ await testAsync("projectStore: create then list round-trips correctly", async ()
   assert.equal(all[0].lastCheckedAt, null);
   assert.deepEqual(all[0].commitHistory, []);
   assert.equal(all[0].lastCommitAt, null, "lastCommitAt must be derived as null for empty commitHistory");
+  assert.equal(all[0].repoMeta, null, "a brand new project must start with no repoMeta");
 });
 
 await testAsync("projectStore: create rejects duplicate ids", async () => {
@@ -139,6 +140,52 @@ await testAsync("projectStore: a missing commitDate is stored as null, not crash
   assert.equal(p.commitHistory[0].commitDate, null);
 });
 
+// --- Regression coverage: the "missing SHA never matches missing SHA" fix ---
+
+await testAsync(
+  "projectStore: addCommitHistoryEntry — REGRESSION: two consecutive missing/null SHAs must NOT be treated as a match",
+  async () => {
+    const store = createProjectStore(makeMockAdapter());
+    await store.create("p9", "P9", "org/p9");
+    // A malformed GitHub response could hand back no sha at all — the
+    // reliability rules require this is NEVER treated as "no change",
+    // because undefined === undefined would falsely look like a match.
+    await store.addCommitHistoryEntry("p9", { sha: null, commitDate: "2026-01-01T00:00:00.000Z" });
+    await store.addCommitHistoryEntry("p9", { sha: undefined, commitDate: "2026-01-02T00:00:00.000Z" });
+    const p = await store.get("p9");
+    assert.equal(
+      p.commitHistory.length,
+      2,
+      "two missing-SHA checks must both be recorded as distinct entries — the safe failure mode is 'treat as changed'"
+    );
+  }
+);
+
+await testAsync(
+  "projectStore: addCommitHistoryEntry — a genuinely missing SHA followed by a real SHA is recorded as changed",
+  async () => {
+    const store = createProjectStore(makeMockAdapter());
+    await store.create("p10", "P10", "org/p10");
+    await store.addCommitHistoryEntry("p10", { sha: null, commitDate: null });
+    await store.addCommitHistoryEntry("p10", { sha: "sha-real", commitDate: "2026-01-01T00:00:00.000Z" });
+    const p = await store.get("p10");
+    assert.equal(p.commitHistory.length, 2);
+    assert.equal(p.commitHistory[0].sha, "sha-real");
+  }
+);
+
+await testAsync(
+  "projectStore: addCommitHistoryEntry — only a genuine, equal, non-null SHA match is deduped (positive control)",
+  async () => {
+    const store = createProjectStore(makeMockAdapter());
+    await store.create("p11", "P11", "org/p11");
+    await store.addCommitHistoryEntry("p11", { sha: "sha-same", commitDate: "2026-01-01T00:00:00.000Z" });
+    await store.addCommitHistoryEntry("p11", { sha: "sha-same", commitDate: "2026-01-01T00:00:00.000Z" });
+    const p = await store.get("p11");
+    assert.equal(p.commitHistory.length, 1, "a real, equal, non-null sha match is the ONLY case that should dedupe");
+  }
+);
+
 await testAsync("projectStore: get() on a project stored under the OLD push-based shape still works (migration safety)", async () => {
   const adapter = makeMockAdapter();
   await adapter.set({
@@ -161,6 +208,7 @@ await testAsync("projectStore: get() on a project stored under the OLD push-base
   assert.equal(p.lastCheckedAt, null, "a legacy project missing lastCheckedAt must default to null");
   assert.equal(p.lastCommitAt, null, "derived lastCommitAt must be null when commitHistory is empty");
   assert.equal(p.pinned, false, "a legacy project missing pinned must default to false");
+  assert.equal(p.repoMeta, null, "a legacy project missing repoMeta must default to null, not crash");
 });
 
 await testAsync("projectStore: addCommitHistoryEntry works correctly on a legacy project with no commitHistory field at all", async () => {
@@ -227,6 +275,57 @@ await testAsync("projectStore: legacy project (no pinned field at all) reads saf
   const store = createProjectStore(adapter);
   const p = await store.get("legacy3");
   assert.equal(p.pinned, false, "legacy project missing `pinned` must default to false, not crash or be undefined");
+});
+
+// --- repoMeta ---
+
+await testAsync("projectStore: updateRepoMeta stores a normalized snapshot from a raw GitHub repo object", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p12", "P12", "org/p12");
+  await store.updateRepoMeta("p12", {
+    description: "A test repo",
+    language: "TypeScript",
+    stargazers_count: 42,
+    private: true,
+    pushed_at: "2026-06-01T00:00:00.000Z",
+  });
+  const p = await store.get("p12");
+  assert.deepEqual(p.repoMeta, {
+    description: "A test repo",
+    language: "TypeScript",
+    stars: 42,
+    isPrivate: true,
+    pushedAt: "2026-06-01T00:00:00.000Z",
+  });
+});
+
+await testAsync("projectStore: updateRepoMeta normalizes missing/undefined fields to null rather than storing undefined", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p13", "P13", "org/p13");
+  await store.updateRepoMeta("p13", {});
+  const p = await store.get("p13");
+  assert.equal(p.repoMeta.description, null);
+  assert.equal(p.repoMeta.language, null);
+  assert.equal(p.repoMeta.stars, null);
+  assert.equal(p.repoMeta.isPrivate, false, "private must default to false (falsy), never crash on a missing field");
+  assert.equal(p.repoMeta.pushedAt, null);
+});
+
+await testAsync("projectStore: updateRepoMeta on unknown id throws", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await assert.rejects(() => store.updateRepoMeta("ghost", {}), /Unknown project/);
+});
+
+await testAsync("projectStore: updateRepoMeta never touches commitHistory/lastCheckedAt — purely additive/display-only", async () => {
+  const store = createProjectStore(makeMockAdapter());
+  await store.create("p14", "P14", "org/p14");
+  await store.addCommitHistoryEntry("p14", { sha: "sha1", commitDate: "2026-01-01T00:00:00.000Z" });
+  await store.updateLastChecked("p14");
+  const before = await store.get("p14");
+  await store.updateRepoMeta("p14", { description: "x" });
+  const after = await store.get("p14");
+  assert.deepEqual(after.commitHistory, before.commitHistory);
+  assert.equal(after.lastCheckedAt, before.lastCheckedAt);
 });
 
 console.log(`\n${passed} test(s) passed total.`);
