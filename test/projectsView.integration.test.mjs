@@ -1,12 +1,25 @@
 // test/projectsView.integration.test.mjs
 // Runs the REAL projectsView.js against a fake DOM + fake chrome.storage +
-// mocked GitHub fetch (commits endpoint, GraphQL endpoint, and /user/repos —
-// this module still never touches build.js/getTree/getReadme/getFileContent
-// at all).
+// mocked GitHub fetch (commits + repo-meta endpoints).
+//
+// Rewritten for the current GITSTREAK architecture: projectsView.js no
+// longer owns any GitHub Overview UI (contribution calendar, recently-
+// pushed-via-/user/repos) — that moved entirely to pulseView.js (Tab 1).
+// This file now only exercises Tab 2: create/pin/check/sort. Element ids
+// match the current popup.html exactly, not the old three-section layout.
+//
+// projectsView.js imports getToken from lib/tokenVault.js, which touches
+// `indexedDB` as an ambient global — so a fake indexedDB is wired up even
+// though no test here actually saves a token (getToken's null-blob path
+// returns early without ever touching it, but this keeps the harness
+// robust against that changing later).
 //
 // Run with: node test/projectsView.integration.test.mjs
 
 import assert from "node:assert/strict";
+import { createFakeIndexedDB } from "./helpers/fakeIndexedDB.mjs";
+
+globalThis.indexedDB = createFakeIndexedDB().indexedDB;
 
 // ---------- Fake DOM ----------
 function makeFakeElement(id) {
@@ -37,8 +50,14 @@ function makeFakeElement(id) {
     appendChild(child) {
       el._children.push(child);
     },
-    querySelector() {
-      return makeFakeElement("stub-child");
+    querySelector(sel) {
+      // projectsView.js only ever queries ".p-pin" / ".p-delete" within a
+      // freshly-built row — return a fresh stub each time, matching how a
+      // real querySelector scoped to a detached element would behave.
+      const stub = makeFakeElement(`stub-child-${sel}`);
+      el._stubChildren = el._stubChildren || {};
+      el._stubChildren[sel] = stub;
+      return stub;
     },
     querySelectorAll() {
       return [];
@@ -70,22 +89,28 @@ function makeFakeElement(id) {
 
 const elementIds = [
   "project-list", "new-project-btn", "new-project-name", "new-project-repo", "new-project-form",
-  "project-detail", "pd-name", "pd-repo", "pd-last-checked", "pd-last-commit", "pd-pin-btn",
+  "project-detail", "pd-name", "pd-repo", "pd-meta", "pd-last-checked", "pd-last-commit", "pd-pin-btn",
   "pd-refresh-btn", "pd-status", "pd-history",
-  // GitHub Overview additions
-  "gh-calendar-token-prompt", "gh-calendar-grid", "gh-calendar-status", "gh-calendar-refresh-btn",
-  "gh-recent-token-prompt", "gh-recent-list", "gh-recent-status", "gh-recent-refresh-btn",
 ];
 
 const elements = {};
 for (const id of elementIds) elements[id] = makeFakeElement(id);
 
+// Rows appended to #project-list are real DOM-like elements built by
+// document.createElement("div") inside renderList() — track them so we can
+// wire up click listeners on the ACTUAL row objects (not stubs) for the
+// multi-project sort scenario below.
+const createdRows = [];
 globalThis.document = {
   getElementById: (id) => {
     if (!elements[id]) throw new Error(`Test harness gap: projectsView.js requested an element id "${id}" the fake DOM doesn't know about — this itself is a signal the real HTML must have that id.`);
     return elements[id];
   },
-  createElement: (tag) => makeFakeElement(`created-${tag}`),
+  createElement: (tag) => {
+    const el = makeFakeElement(`created-${tag}`);
+    createdRows.push(el);
+    return el;
+  },
 };
 
 globalThis.alert = (msg) => { throw new Error(`alert() was called (should not happen in this test): ${msg}`); };
@@ -102,59 +127,34 @@ globalThis.chrome = {
 };
 let chromeStorageMock = {};
 
-// ---------- Fake GitHub API — commits, GraphQL, and /user/repos ----------
+// ---------- Fake GitHub API — commits + repo-meta endpoints only ----------
 function jsonResponse(obj) {
   return { ok: true, status: 200, headers: { get: () => null }, json: async () => obj };
 }
 
-// Derived from the REAL current clock, not hardcoded — so this test stays
-// correct whenever it's run, instead of silently breaking after a month
-// boundary passes.
-const now = new Date();
-const curYear = now.getUTCFullYear();
-const curMonth = now.getUTCMonth(); // 0-indexed
-const curMonthKey = `${curYear}-${String(curMonth + 1).padStart(2, "0")}`;
-const curMonthDay1 = `${curYear}-${String(curMonth + 1).padStart(2, "0")}-01`;
-const curMonthDay2 = `${curYear}-${String(curMonth + 1).padStart(2, "0")}-02`;
-const prevMonthDate = new Date(Date.UTC(curYear, curMonth - 1, 15));
-const prevMonthKey = `${prevMonthDate.getUTCFullYear()}-${String(prevMonthDate.getUTCMonth() + 1).padStart(2, "0")}`;
-
 let commitCallCount = 0;
+let repoMetaCallCount = 0;
 let mockSha = "sha-initial";
 let mockDate = "2026-07-01T00:00:00Z";
-let graphqlCallCount = 0;
-let recentReposCallCount = 0;
-let mockRecentRepos = [
-  { name: "aixrobo-web", full_name: "ahkhan-nafrok/aixrobo-web", created_at: "2025-01-01T00:00:00Z", pushed_at: "2026-07-20T00:00:00Z" },
-  { name: "slatebooks", full_name: "ahkhan-nafrok/slatebooks", created_at: "2025-02-01T00:00:00Z", pushed_at: "2026-07-15T00:00:00Z" },
-  { name: "aml-motors", full_name: "ahkhan-nafrok/aml-motors", created_at: "2024-01-01T00:00:00Z", pushed_at: "2026-01-01T00:00:00Z" },
-];
+let commitsShouldFail = false;
+let mockRepoMeta = {
+  description: "A fake test repo",
+  language: "JavaScript",
+  stargazers_count: 7,
+  private: false,
+  pushed_at: "2026-07-01T00:00:00Z",
+};
 
-globalThis.fetch = async (url, options) => {
+globalThis.fetch = async (url) => {
   const u = String(url);
   if (u.includes("/commits?per_page=1")) {
     commitCallCount++;
+    if (commitsShouldFail) throw new Error("simulated GitHub failure");
     return jsonResponse([{ sha: mockSha, commit: { committer: { date: mockDate } } }]);
   }
-  if (u === "https://api.github.com/graphql") {
-    graphqlCallCount++;
-    return jsonResponse({
-      data: {
-        viewer: {
-          contributionsCollection: {
-            contributionCalendar: {
-              weeks: [
-                { contributionDays: [{ date: curMonthDay1, contributionCount: 3 }, { date: curMonthDay2, contributionCount: 0 }] },
-              ],
-            },
-          },
-        },
-      },
-    });
-  }
-  if (u.includes("/user/repos")) {
-    recentReposCallCount++;
-    return jsonResponse(mockRecentRepos);
+  if (/\/repos\/[^/]+\/[^/]+$/.test(u)) {
+    repoMetaCallCount++;
+    return jsonResponse(mockRepoMeta);
   }
   throw new Error(`Unhandled mock URL: ${u}`);
 };
@@ -162,22 +162,9 @@ globalThis.fetch = async (url, options) => {
 // ---------- Run the REAL projectsView.js against all of the above ----------
 const { initProjectsView } = await import("../projectsView.js");
 
-console.log("=== Scenario 1: no GitHub token set at all ===");
-console.log("Initializing projectsView (real init code, fake DOM, no ghToken in storage)...");
+console.log("=== Basic create + auto-check flow ===");
 initProjectsView();
-// Overview loads are fire-and-forget (not awaited by initProjectsView), so give
-// their internal awaited storage/fetch calls a tick to settle before asserting.
-await new Promise((r) => setTimeout(r, 0));
-await new Promise((r) => setTimeout(r, 0));
 console.log("  ok  - initProjectsView() ran without throwing");
-
-assert.equal(elements["gh-calendar-token-prompt"].hidden, false, "no token: calendar token prompt must be shown");
-assert.equal(elements["gh-calendar-grid"].hidden, true, "no token: calendar grid must be hidden");
-assert.equal(elements["gh-recent-token-prompt"].hidden, false, "no token: recent-repos token prompt must be shown");
-assert.equal(elements["gh-recent-list"].hidden, true, "no token: recent-repos list must be hidden");
-assert.equal(graphqlCallCount, 0, "no token: GraphQL must never be called at all");
-assert.equal(recentReposCallCount, 0, "no token: /user/repos must never be called at all");
-console.log("  ok  - with no token, both Overview sections show their prompts and make ZERO GitHub calls");
 
 console.log("\nCreating a project via the real 'new project' handler...");
 elements["new-project-name"].value = "Fake Project";
@@ -185,21 +172,29 @@ elements["new-project-repo"].value = "fake/repo";
 await elements["new-project-btn"].dispatch("click");
 console.log("  ok  - project created without throwing");
 
-console.log("\nConfirming the first-add auto-check populated history entry #1 immediately...");
+console.log("\nConfirming the first-add auto-check populated history entry #1 and repoMeta immediately...");
 assert.equal(commitCallCount, 1, "creating a project must trigger exactly one commit-fetch call, automatically");
+assert.equal(repoMetaCallCount, 1, "creating a project must also trigger exactly one repo-meta fetch");
 assert.ok(!elements["pd-last-checked"].textContent.includes("never"), "last-checked must no longer read 'never' after the auto-check");
 assert.ok(!elements["pd-last-commit"].textContent.includes("unknown"), "last-commit must no longer read 'unknown' after the auto-check");
 assert.ok(
   chromeStorageMock.projects["fake-project"].commitHistory.length === 1,
   "history entry #1 must be recorded in storage immediately on add, not waiting for a manual check"
 );
+assert.ok(
+  chromeStorageMock.projects["fake-project"].repoMeta,
+  "repoMeta must be recorded in storage immediately on add"
+);
+assert.equal(chromeStorageMock.projects["fake-project"].repoMeta.language, "JavaScript");
+assert.equal(chromeStorageMock.projects["fake-project"].repoMeta.stars, 7);
 console.log(`  ok  - pd-last-checked: "${elements["pd-last-checked"].textContent}"`);
 console.log(`  ok  - pd-last-commit: "${elements["pd-last-commit"].textContent}"`);
+console.log("  ok  - repoMeta snapshot stored alongside the commit check");
 
 console.log("\nClicking 'Check for Updates' again with the SAME upstream commit (no-op expected)...");
 commitCallCount = 0;
 await elements["pd-refresh-btn"].dispatch("click");
-assert.equal(commitCallCount, 1, "a manual check must still make exactly one GitHub call");
+assert.equal(commitCallCount, 1, "a manual check must still make exactly one GitHub commits call");
 assert.equal(
   chromeStorageMock.projects["fake-project"].commitHistory.length,
   1,
@@ -226,18 +221,13 @@ await elements["pd-pin-btn"].dispatch("click");
 assert.equal(chromeStorageMock.projects["fake-project"].pinned, true, "pin button click must persist pinned=true");
 console.log("  ok  - project pinned, persisted to storage");
 
-console.log("\n--- Multi-project list scenario (scalability + sort check) ---");
-console.log("Adding a SECOND project (never checked, simulating a failed auto-check) to test list ordering...");
-const originalFetch = globalThis.fetch;
-globalThis.fetch = async (url) => {
-  const u = String(url);
-  if (u.includes("/commits?per_page=1")) throw new Error("simulated GitHub failure for second project's auto-check");
-  return originalFetch(url);
-};
+console.log("\n=== REGRESSION: lastCheckedAt must stamp even when the check fails ===");
+console.log("Adding a SECOND project whose auto-check will fail (simulated rate limit / network error)...");
+commitsShouldFail = true;
 elements["new-project-name"].value = "Zzz Second Project";
 elements["new-project-repo"].value = "fake/repo2";
 await elements["new-project-btn"].dispatch("click");
-globalThis.fetch = originalFetch;
+commitsShouldFail = false;
 
 assert.equal(
   chromeStorageMock.projects["zzz-second-project"] !== undefined,
@@ -249,60 +239,27 @@ assert.equal(
   0,
   "a failed auto-check must leave commitHistory empty, not crash the add flow"
 );
-console.log("  ok  - a failed first-check doesn't block project creation (non-blocking, as specified)");
+assert.ok(
+  chromeStorageMock.projects["zzz-second-project"].lastCheckedAt,
+  "REGRESSION CHECK: lastCheckedAt must be stamped even though the check failed — the UI must never silently keep showing stale/blank staleness info for a repo that's actually been failing"
+);
+assert.ok(
+  elements["pd-status"].textContent.includes("first check failed"),
+  "the failure must be surfaced inline in the UI, not swallowed silently"
+);
+console.log("  ok  - a failed first-check doesn't block project creation");
+console.log("  ok  - REGRESSION: lastCheckedAt is stamped even though the check failed, commitHistory stays empty");
+console.log("  ok  - failure is surfaced in the status line");
 
+console.log("\n--- Multi-project list scenario (sort check) ---");
 const listRows = elements["project-list"]._children;
 assert.equal(listRows.length, 2, "both tracked projects should render as rows");
 console.log(`  ok  - project-list rendered ${listRows.length} rows`);
 
 assert.ok(listRows[0].innerHTML.includes("Fake Project"), `expected the pinned project first, row 0 was: ${listRows[0].innerHTML.slice(0, 160)}`);
 assert.ok(listRows[1].innerHTML.includes("Zzz Second Project"), "the unpinned never-checked project should sort after the pinned one");
-assert.ok(listRows[1].innerHTML.includes("badge-pending"), "a never-checked project's row must carry the not-checked badge");
+assert.ok(listRows[1].innerHTML.includes("badge-pending"), "a never-checked project's row must carry the not-checked badge, based on lastCommitAt not lastCheckedAt");
 console.log("  ok  - pinned project sorts first regardless of name or recency");
-console.log("  ok  - unpinned never-checked project shows the not-checked badge");
-
-console.log("\n=== Scenario 2: GitHub token IS present — GitHub Overview features ===");
-chromeStorageMock.ghToken = "ghp_faketoken";
-
-console.log("Clicking the calendar refresh button (manual refresh)...");
-graphqlCallCount = 0;
-await elements["gh-calendar-refresh-btn"].dispatch("click");
-assert.equal(graphqlCallCount, 1, "a manual calendar refresh must make exactly one GraphQL call");
-assert.equal(elements["gh-calendar-token-prompt"].hidden, true, "with a token present, the calendar token prompt must be hidden");
-assert.equal(elements["gh-calendar-grid"].hidden, false, "with a token present, the calendar grid must be shown");
-assert.ok(chromeStorageMock.ghContributionCache, "a successful calendar fetch must be cached in storage");
-assert.equal(chromeStorageMock.ghContributionCache.dayMap[curMonthDay1].count, 3, "fetched contribution data must be parsed and cached correctly");
-assert.equal(chromeStorageMock.ghContributionCache.monthKey, curMonthKey, "the cache must be tagged with the real current month key");
-console.log("  ok  - calendar refresh: exactly one GraphQL call, data cached, grid shown");
-
-console.log("Clicking the calendar refresh button AGAIN with an unchanged month (cache should be reused, but a forced click always refetches)...");
-graphqlCallCount = 0;
-await elements["gh-calendar-refresh-btn"].dispatch("click");
-assert.equal(graphqlCallCount, 1, "an explicit refresh click must always refetch, regardless of cache freshness");
-console.log("  ok  - explicit refresh always makes a real call, never silently served from cache");
-
-console.log("\nClicking the recently-pushed refresh button (manual refresh)...");
-recentReposCallCount = 0;
-await elements["gh-recent-refresh-btn"].dispatch("click");
-assert.equal(recentReposCallCount, 1, "a manual recent-repos refresh must make exactly one /user/repos call");
-assert.equal(elements["gh-recent-token-prompt"].hidden, true, "with a token present, the recent-repos token prompt must be hidden");
-assert.equal(elements["gh-recent-list"].hidden, false, "with a token present, the recent-repos list must be shown");
-assert.equal(chromeStorageMock.ghRecentRepos.repos.length, 2, "recently-pushed must be capped at 2 entries");
-assert.equal(chromeStorageMock.ghRecentRepos.repos[0].name, "aixrobo-web", "the most recently pushed repo must rank first");
-assert.ok(elements["gh-recent-list"].innerHTML.includes("aixrobo-web"), "the rendered list must show the top-ranked repo");
-console.log("  ok  - recently-pushed refresh: exactly one call, ranked top-2 cached and rendered");
-
-console.log("\n=== Scenario 3: month rollover ===");
-console.log("Simulating the popup being reopened in a NEW month with a stale cached calendar (no forced click this time)...");
-chromeStorageMock.ghContributionCache = { monthKey: prevMonthKey, dayMap: { "irrelevant-old-day": { count: 1 } }, fetchedAt: prevMonthDate.toISOString() };
-graphqlCallCount = 0;
-// Re-invoke the non-forced load path the same way initProjectsView does on open.
-const { initProjectsView: reinit } = await import("../projectsView.js?scenario3");
-reinit();
-await new Promise((r) => setTimeout(r, 0));
-await new Promise((r) => setTimeout(r, 0));
-assert.equal(graphqlCallCount, 1, "a cache from a PREVIOUS month must trigger an automatic refetch, with no button click needed");
-assert.equal(chromeStorageMock.ghContributionCache.monthKey, curMonthKey, "the cache must be updated to the real current month after the automatic refetch");
-console.log("  ok  - month rollover auto-refetches the calendar without requiring a manual click");
+console.log("  ok  - unpinned never-checked project (by commit, despite having a lastCheckedAt) still shows the not-checked badge");
 
 console.log("\nAll projectsView integration checks passed.");
