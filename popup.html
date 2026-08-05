@@ -26,22 +26,52 @@
   <section id="tab-pulse" class="tab-panel active">
     <div class="glass-card gh-overview-card">
       <div class="gh-overview-header">
-        <h3>Last 12 months</h3>
-        <button id="pulse-refresh-btn" class="btn-ghost gh-refresh-btn" type="button" title="Refresh"></button>
+        <h3>Last 12 Months</h3>
+        <span id="pulse-last-updated" class="pulse-last-updated hint" hidden></span>
       </div>
+
+      <button id="pulse-refresh-btn" class="btn-primary pulse-update-btn" type="button">
+        <span class="pulse-update-icon" aria-hidden="true"></span>
+        <span id="pulse-update-btn-label">Click to Update</span>
+      </button>
 
       <div id="pulse-token-prompt" class="empty-state" hidden>
         <p class="hint">Add a GitHub token in Settings to see your contribution activity here.</p>
       </div>
 
-      <div id="pulse-calendar-grid" class="gh-cal-grid"></div>
+      <div id="pulse-calendar-wrap" class="gh-cal-wrap" hidden>
+        <div id="pulse-calendar-grid" class="gh-cal-grid"></div>
+      </div>
       <div id="pulse-status" class="status" hidden></div>
 
-      <div class="pulse-streak-row">
-        <div class="pulse-streak-label">Current streak</div>
-        <div id="pulse-streak" class="pulse-streak-value">—</div>
+      <div id="pulse-stats-row" class="pulse-stats-row" hidden>
+        <div class="pulse-stat">
+          <div class="pulse-stat-label">Current Streak</div>
+          <div id="pulse-streak" class="pulse-stat-value">—</div>
+          <div id="pulse-streak-note" class="pulse-stat-note"></div>
+        </div>
+        <div class="pulse-stat-divider" aria-hidden="true"></div>
+        <div class="pulse-stat">
+          <div class="pulse-stat-label">This Year</div>
+          <div id="pulse-year-total" class="pulse-stat-value">—</div>
+          <div class="pulse-stat-note">contributions</div>
+        </div>
       </div>
-      <div id="pulse-streak-note" class="hint"></div>
+
+      <div id="pulse-last-pushed" class="pulse-last-pushed" hidden>
+        <div class="plp-label">Last Pushed</div>
+        <div class="plp-body">
+          <div class="plp-repo-row">
+            <span id="plp-repo-name" class="plp-repo-name mono"></span>
+            <span id="plp-repo-badge" class="plp-badge" hidden>Private</span>
+          </div>
+          <p id="plp-repo-desc" class="hint plp-desc"></p>
+          <div class="plp-meta-row">
+            <span id="plp-pushed-at" class="fact-line"></span>
+            <span id="plp-language" class="fact-line"></span>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
