@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Token Optimizer</title>
+  <title>GITSTREAK</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
@@ -12,70 +12,50 @@
   <header class="app-header">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
-      <h1>Token Optimizer</h1>
+      <h1>GITSTREAK</h1>
     </div>
   </header>
 
   <nav class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="skeletonizer" role="tab" aria-selected="true">Skeletonizer</button>
+    <button class="tab-btn active" data-tab="pulse" role="tab" aria-selected="true">Pulse</button>
     <button class="tab-btn" data-tab="projects" role="tab" aria-selected="false">Projects</button>
+    <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">Settings</button>
   </nav>
 
-  <!-- ===================== TAB 1: SKELETONIZER (Module 1) ===================== -->
-  <section id="tab-skeletonizer" class="tab-panel active">
-    <div class="glass-card">
-      <div class="field">
-        <label for="repo-input">GitHub repo</label>
-        <input id="repo-input" type="text" placeholder="owner/repo or github.com/owner/repo" autocomplete="off" />
+  <!-- ===================== TAB 1: PULSE ===================== -->
+  <section id="tab-pulse" class="tab-panel active">
+    <div class="glass-card gh-overview-card">
+      <div class="gh-overview-header">
+        <h3>Last 12 months</h3>
+        <button id="pulse-refresh-btn" class="btn-ghost gh-refresh-btn" type="button" title="Refresh"></button>
       </div>
 
-      <details class="field field-collapsible">
-        <summary>GitHub token <span class="summary-hint">optional — raises rate limit to 5,000/hr</span></summary>
-        <input id="token-input" type="password" placeholder="ghp_..." autocomplete="off" />
-        <p class="hint">Stored locally via chrome.storage, never sent anywhere but api.github.com. Also used by the Projects tab's GitHub Overview (contribution calendar + recently pushed), which need a token to work.</p>
-      </details>
-
-      <button id="build-btn" class="btn-primary">
-        <span>Build Tier 1 Pack</span>
-      </button>
-
-      <button id="template-btn" class="btn-ghost template-trigger" type="button">Generate as...</button>
-      <div id="template-picker" class="template-picker" hidden>
-        <button class="btn-ghost template-option" type="button" data-template="onboarding">Onboarding</button>
-        <button class="btn-ghost template-option" type="button" data-template="audit">Audit</button>
+      <div id="pulse-token-prompt" class="empty-state" hidden>
+        <p class="hint">Add a GitHub token in Settings to see your contribution activity here.</p>
       </div>
 
-      <div id="status" class="status" hidden></div>
+      <div id="pulse-calendar-grid" class="gh-cal-grid"></div>
+      <div id="pulse-status" class="status" hidden></div>
 
-      <div id="result" class="result" hidden>
-        <div class="result-header">
-          <span id="token-count" class="token-count-value"></span>
-          <span id="trimmed-note" class="trimmed-note"></span>
-        </div>
-        <div class="compression-meter" aria-hidden="true">
-          <div class="compression-meter-fill"></div>
-        </div>
-
-        <div id="entry-file-note" class="entry-note"></div>
-
-        <textarea id="output" readonly></textarea>
-
-        <button id="copy-btn" class="btn-ghost">Copy to Clipboard</button>
+      <div class="pulse-streak-row">
+        <div class="pulse-streak-label">Current streak</div>
+        <div id="pulse-streak" class="pulse-streak-value">—</div>
       </div>
+      <div id="pulse-streak-note" class="hint"></div>
     </div>
   </section>
 
-  <!-- ===================== TAB 2: PROJECTS (Module 2) — GitHub repo tracker + account-level GitHub Overview ===================== -->
+  <!-- ===================== TAB 2: PROJECTS ===================== -->
   <section id="tab-projects" class="tab-panel">
     <div id="project-list"></div>
 
     <details class="field field-collapsible add-project-trigger" id="new-project-form">
-      <summary>Track a new project</summary>
+      <summary>Track a repo</summary>
       <div class="new-project-fields">
-        <input id="new-project-name" type="text" placeholder="Project name (e.g. AML Motors)" autocomplete="off" />
+        <input id="new-project-name" type="text" placeholder="Display name (e.g. AML Motors)" autocomplete="off" />
         <input id="new-project-repo" type="text" placeholder="owner/repo" autocomplete="off" />
       </div>
-      <button id="new-project-btn" class="btn-primary">Add Project</button>
+      <button id="new-project-btn" class="btn-primary">Add Repo</button>
     </details>
 
     <div id="project-detail" class="project-detail glass-card" hidden>
@@ -83,6 +63,7 @@
         <div>
           <h2 id="pd-name"></h2>
           <p id="pd-repo" class="hint mono"></p>
+          <p id="pd-meta" class="hint" hidden></p>
         </div>
         <button id="pd-pin-btn" class="pin-btn" title="Pin to top (max 4)"></button>
       </div>
@@ -97,32 +78,46 @@
 
       <div id="pd-history" class="history-box"></div>
     </div>
+  </section>
 
-    <!-- ===== GitHub Overview: account-level, always visible, independent of any selected project ===== -->
-    <div class="gh-overview">
-      <div class="glass-card gh-overview-card">
-        <div class="gh-overview-header">
-          <h3>This month's contributions</h3>
-          <button id="gh-calendar-refresh-btn" class="btn-ghost gh-refresh-btn" type="button" title="Refresh"></button>
-        </div>
-        <div id="gh-calendar-token-prompt" class="empty-state" hidden>
-          <p class="hint">Add a GitHub token in the Skeletonizer tab to see this.</p>
-        </div>
-        <div id="gh-calendar-grid" class="gh-cal-grid"></div>
-        <div id="gh-calendar-status" class="status" hidden></div>
+  <!-- ===================== TAB 3: SETTINGS ===================== -->
+  <section id="tab-settings" class="tab-panel">
+    <div class="glass-card">
+      <div class="field">
+        <label for="settings-token-input">GitHub token</label>
+        <input id="settings-token-input" type="password" placeholder="ghp_... or github_pat_..." autocomplete="off" />
+        <p class="hint">
+          Use a fine-grained personal access token, scoped to just <code>Contents: Read</code>
+          (plus private-repo access if you want to track private repos), with an expiration set.
+          The token is encrypted before it's stored — see below for how.
+        </p>
       </div>
 
-      <div class="glass-card gh-overview-card">
-        <div class="gh-overview-header">
-          <h3>Recently pushed</h3>
-          <button id="gh-recent-refresh-btn" class="btn-ghost gh-refresh-btn" type="button" title="Refresh"></button>
-        </div>
-        <div id="gh-recent-token-prompt" class="empty-state" hidden>
-          <p class="hint">Add a GitHub token in the Skeletonizer tab to see this.</p>
-        </div>
-        <div id="gh-recent-list" class="gh-recent-list"></div>
-        <div id="gh-recent-status" class="status" hidden></div>
+      <div class="settings-btn-row">
+        <button id="settings-test-btn" class="btn-ghost" type="button">Test Connection</button>
+        <button id="settings-save-btn" class="btn-primary" type="button" disabled>Save Token</button>
       </div>
+
+      <div id="settings-scopes" class="hint mono" hidden></div>
+      <div id="settings-status" class="status" hidden></div>
+
+      <div id="settings-connected-row" class="settings-connected-row" hidden>
+        <span id="settings-connected-label" class="fact-line"></span>
+        <button id="settings-revoke-btn" class="btn-ghost" type="button">Revoke Locally</button>
+      </div>
+    </div>
+
+    <div class="glass-card settings-security-note">
+      <h3>How this is protected</h3>
+      <p class="hint">
+        The token is encrypted with a key that's generated to be non-extractable —
+        this extension's own code can use it to encrypt and decrypt, but can never
+        read its raw bytes back out. That key lives separately from the encrypted
+        token, so no passphrase or re-entry is needed, ever, even after a browser
+        or PC restart. The token itself never leaves this extension's own
+        popup/background context, and every request goes only to
+        <code>api.github.com</code>.
+      </p>
     </div>
   </section>
 
