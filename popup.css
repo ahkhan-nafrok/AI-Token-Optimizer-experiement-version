@@ -9,7 +9,15 @@
    Skeletonizer output panel (compression meter, entry-note, output
    textarea, template picker) — those classes no longer exist anywhere in
    the HTML/JS, so they're dropped here too rather than left as dead CSS.
-   Added: pulse streak row, settings panel styling. */
+   Added: pulse streak row, settings panel styling.
+
+   Pulse-tab UI/UX pass: rebuilt update CTA, drag/swipe calendar (no native
+   scrollbar), streak + year-total stat row, last-pushed card. Also fixes a
+   real bug: `.empty-state { display: flex }` was tying with the browser's
+   own `[hidden] { display: none }` rule at equal specificity, so an
+   element's `hidden` attribute could silently lose to author CSS. The
+   global [hidden] rule below settles that for every element in the app,
+   not just Pulse's token prompt. */
 
 :root {
   /* ---- surfaces ---- */
@@ -56,6 +64,14 @@
 }
 
 * { box-sizing: border-box; }
+
+/* Author-stylesheet rules at equal specificity to [hidden] can beat the
+   browser's UA rule (`[hidden] { display: none }`) in the cascade — as
+   `.empty-state { display: flex }` was doing for Pulse's token prompt.
+   Forcing it here means `el.hidden = true/false` always actually works,
+   everywhere in the app, regardless of what other display rules a class
+   sets. */
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -538,7 +554,7 @@ button { font-family: var(--font-sans); }
 
 /* ---------------- Pulse (Tab 1): contribution calendar + streak ---------------- */
 .gh-overview-card { padding: 14px; }
-.gh-overview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.gh-overview-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
 .gh-overview-header h3 {
   font-size: 11px;
   font-weight: 600;
@@ -547,22 +563,20 @@ button { font-family: var(--font-sans); }
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
+.pulse-last-updated { font-size: 10px; margin: 0; flex-shrink: 0; }
 
-.gh-refresh-btn {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
+/* Update CTA — deliberately enlarged and full-width: this is the one
+   action on this tab, so it should read as an inviting primary action
+   rather than a tucked-away icon button. Three visual states, none of
+   which use color (per the monochrome rule): idle, is-loading (spinning
+   icon, "Updating..." label), is-success (checkmark icon, brief scale
+   pulse, "Updated" label, auto-reverts). */
+.pulse-update-btn { margin-bottom: 14px; }
+.pulse-update-icon {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-}
-.gh-refresh-btn::before {
-  content: "";
-  width: 12px;
-  height: 12px;
-  background: currentColor;
+  background: var(--accent-ink);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2v3.2h-3.2' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.5 8a5.5 5.5 0 1 1-1.7-3.98M13.5 2v3.2h-3.2' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   -webkit-mask-repeat: no-repeat;
@@ -573,47 +587,119 @@ button { font-family: var(--font-sans); }
   mask-size: contain;
   transition: transform var(--dur-slow) var(--ease-out);
 }
-.gh-refresh-btn:hover::before { transform: rotate(180deg); }
-.gh-refresh-btn:disabled::before { animation: spin 0.9s linear infinite; }
+.pulse-update-btn:hover .pulse-update-icon { transform: rotate(180deg); }
+.pulse-update-btn.is-loading .pulse-update-icon { animation: spin 0.9s linear infinite; }
+.pulse-update-btn.is-success .pulse-update-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.2 3.2L13 4.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.2 3.2L13 4.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  animation: none;
+}
+.pulse-update-btn.is-success { animation: update-success-pulse var(--dur-slow) var(--ease-spring); }
+@keyframes update-success-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.015); }
+  100% { transform: scale(1); }
+}
 
 /* Contribution calendar: columns = weeks, rows = Sun..Sat, binary states
-   only — filled (contributed) vs dim (no contribution). Scrolls
-   horizontally since a rolling 12 months is ~53 columns wide. */
-.gh-cal-grid {
-  display: flex;
-  gap: 3px;
-  justify-content: flex-start;
+   only — filled (contributed) vs dim (no contribution). Custom drag/swipe
+   scroll (mouse + touch) replaces the native scrollbar entirely: no
+   scrollbar track is shown, edges fade via mask-image instead of a hard
+   cut, and the wrap is defaulted to its far-right scroll position (today /
+   current month) on every render via JS, rather than opening on the
+   oldest (year-ago) end. */
+.gh-cal-wrap {
   overflow-x: auto;
-  padding-bottom: 4px;
+  overflow-y: hidden;
+  cursor: grab;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%);
+  padding: 2px 0 6px;
+  user-select: none;
+  -webkit-user-select: none;
 }
+.gh-cal-wrap::-webkit-scrollbar { display: none; }
+.gh-cal-wrap.is-dragging { cursor: grabbing; }
+.gh-cal-grid { display: flex; gap: 3px; justify-content: flex-start; width: max-content; }
 .gh-cal-col { display: flex; flex-direction: column; gap: 3px; }
-.gh-cal-cell { width: 10px; height: 10px; border-radius: 2.5px; flex-shrink: 0; }
+.gh-cal-cell { width: 10px; height: 10px; border-radius: 2.5px; flex-shrink: 0; pointer-events: none; }
 .gh-cal-cell.is-active { background: var(--accent-strong); box-shadow: 0 0 5px var(--accent-glow); }
 .gh-cal-cell.is-empty { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--glass-border); }
 .gh-cal-cell.is-blank { background: transparent; }
 
-.pulse-streak-row {
+/* Below-chart facts: current streak + this-year total, side by side. */
+.pulse-stats-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: stretch;
   margin-top: 14px;
-  padding-top: 12px;
+  padding-top: 14px;
   border-top: 1px solid var(--glass-border);
 }
-.pulse-streak-label {
+.pulse-stat { flex: 1; text-align: center; }
+.pulse-stat-divider { width: 1px; background: var(--glass-border); margin: 2px 6px; }
+.pulse-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 5px;
+}
+.pulse-stat-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--accent-strong);
+  line-height: 1.1;
+}
+.pulse-stat-note { font-size: 10px; color: var(--text-tertiary); margin-top: 4px; min-height: 12px; line-height: 1.4; }
+
+/* Bottom-of-tab: the single most recently pushed repo on the account. */
+.pulse-last-pushed { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--glass-border); }
+.plp-label {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.4px;
+  margin-bottom: 8px;
 }
-.pulse-streak-value {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--accent-strong);
+.plp-body {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
 }
+.plp-repo-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.plp-repo-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plp-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-tertiary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+.plp-desc {
+  margin: 6px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plp-meta-row { display: flex; gap: 12px; margin-top: 8px; }
 
 /* ---------------- Settings (Tab 3): token vault UI ---------------- */
 .settings-btn-row { display: flex; gap: 8px; margin-top: 4px; }
