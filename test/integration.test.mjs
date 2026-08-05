@@ -22,19 +22,29 @@ function jsonResponse(obj) {
 
 let mockSha = "sha-AAA";
 let mockDate = "2026-06-01T00:00:00Z";
+let shouldFail = false;
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url) => {
   const u = String(url);
   if (u.includes("/commits?per_page=1")) {
+    if (shouldFail) throw new Error("simulated network failure");
     return jsonResponse([{ sha: mockSha, commit: { committer: { date: mockDate } } }]);
   }
   throw new Error(`Unhandled mock URL in integration test: ${u}`);
 };
 
+/**
+ * Mirrors the REAL checkForUpdates in projectsView.js: lastCheckedAt is
+ * stamped BEFORE the network call, not after a successful one. This is
+ * deliberate — per the GITSTREAK spec, lastCheckedAt must be stamped
+ * "every time you check a repo, regardless of outcome." Stamping it only on
+ * success would mean a repo failing checks (rate limit, network blip)
+ * silently stops showing as recently checked.
+ */
 async function checkForUpdates(store, id, repo) {
   const { owner, repo: repoName } = parseRepoInput(repo);
-  const latest = await getLatestCommit(owner, repoName, null);
   await store.updateLastChecked(id);
+  const latest = await getLatestCommit(owner, repoName, null);
   await store.addCommitHistoryEntry(id, latest);
 }
 
@@ -83,6 +93,31 @@ async function run() {
   assert.equal(final.commitHistory[0].sha, "sha-EXTRA-5", "newest of the extras must be first");
   assert.ok(!final.commitHistory.some((h) => h.sha === "sha-AAA"), "the original oldest entry must have been evicted");
   console.log("  ok  - FIFO cap at 6 holds under a realistic sequence of checks");
+
+  // --- REGRESSION: lastCheckedAt must be stamped even when the check fails ---
+  await store.create("flaky-repo", "Flaky Repo", "org/flaky-repo");
+  const beforeFailure = await store.get("flaky-repo");
+  assert.equal(beforeFailure.lastCheckedAt, null);
+
+  shouldFail = true;
+  await assert.rejects(
+    () => checkForUpdates(store, "flaky-repo", "org/flaky-repo"),
+    /simulated network failure/,
+    "a network failure during the check must still propagate to the caller"
+  );
+  shouldFail = false;
+
+  const afterFailure = await store.get("flaky-repo");
+  assert.ok(
+    afterFailure.lastCheckedAt,
+    "REGRESSION CHECK: lastCheckedAt must be stamped even though the GitHub call failed — per spec, 'stamped every time you check a repo, regardless of outcome'"
+  );
+  assert.deepEqual(
+    afterFailure.commitHistory,
+    [],
+    "a failed check must never touch commitHistory — only lastCheckedAt changes on failure"
+  );
+  console.log("  ok  - REGRESSION: lastCheckedAt is stamped even when the GitHub call fails, commitHistory untouched");
 
   console.log("\nAll integration checks passed.");
 }
