@@ -4,20 +4,28 @@
    through white-on-black contrast and motion, not color. Staleness /
    destructive states are distinguished by weight, icon, and motion.
 
-   This is the same design system as before (Token Optimizer v3), carried
-   forward unchanged for GITSTREAK. Removed: everything specific to the old
-   Skeletonizer output panel (compression meter, entry-note, output
-   textarea, template picker) — those classes no longer exist anywhere in
-   the HTML/JS, so they're dropped here too rather than left as dead CSS.
-   Added: pulse streak row, settings panel styling.
+   UI/UX pass (this session):
+     - Settings is no longer a third tab button. Nav now shows Pulse/
+       Projects plus a gear icon (.settings-toggle-btn) that does a full
+       swap into the Settings panel and turns into a back arrow
+       (.is-back). See popup.js for the swap logic.
+     - Project detail card gained a "Back to Projects" button
+       (.pd-close-btn) so opening a repo no longer feels like a one-way
+       door.
+     - Projects tab gained a small list header with a live tracked-repo
+       count badge (.projects-list-header / .projects-count-badge).
+     - Pin/delete icons on list rows now reveal on hover/focus instead of
+       sitting at full opacity all the time — quieter at rest, still fully
+       reachable via keyboard focus.
+     - Settings token entry group (input + hint + Test/Save buttons) is
+       now hidden entirely once a token is connected — only the
+       "Connected as ..." + Revoke Locally row shows. See
+       #settings-token-card.is-connected below and settingsView.js.
 
-   Pulse-tab UI/UX pass: rebuilt update CTA, drag/swipe calendar (no native
-   scrollbar), streak + year-total stat row, last-pushed card. Also fixes a
-   real bug: `.empty-state { display: flex }` was tying with the browser's
-   own `[hidden] { display: none }` rule at equal specificity, so an
-   element's `hidden` attribute could silently lose to author CSS. The
-   global [hidden] rule below settles that for every element in the app,
-   not just Pulse's token prompt. */
+   Removed: everything specific to the old Skeletonizer output panel
+   (compression meter, entry-note, output textarea, template picker) —
+   those classes no longer exist anywhere in the HTML/JS, so they're
+   dropped here too rather than left as dead CSS. */
 
 :root {
   /* ---- surfaces ---- */
@@ -143,8 +151,17 @@ html, body {
 }
 .brand h1 { font-size: 14.5px; font-weight: 600; margin: 0; letter-spacing: -0.1px; }
 
-/* ---------------- tabs ---------------- */
-.tabs { position: relative; z-index: 1; display: flex; gap: 4px; padding: 0 14px 12px; }
+/* ---------------- tabs + settings gear toggle ---------------- */
+.tabs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+.tabs-main { display: flex; gap: 4px; flex: 1; min-width: 0; }
+
 .tab-btn {
   flex: 1;
   background: transparent;
@@ -173,6 +190,67 @@ html, body {
 .tab-btn:focus-visible, button:focus-visible, input:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 4px rgba(255, 255, 255, 0.45);
+}
+
+/* Label that takes the tabs-main's place while Settings is open (full
+   swap) — same slot, so the nav's height/position never jumps. */
+.settings-nav-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 8px 2px;
+}
+
+/* Gear <-> back-arrow toggle. Icon itself swaps via .is-back rather than
+   two separate elements, keeping this a single consistently-positioned
+   button whether idle, hovered, or active in Settings mode. */
+.settings-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.settings-toggle-btn:hover {
+  color: var(--text-primary);
+  background: var(--glass-fill);
+  border-color: var(--glass-border-strong);
+}
+.settings-toggle-btn:active { transform: scale(0.92); }
+.settings-toggle-btn.is-back {
+  color: var(--text-primary);
+  background: var(--glass-fill-hover);
+  border-color: var(--glass-border);
+}
+.settings-toggle-icon {
+  width: 15px;
+  height: 15px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'%3E%3C/circle%3E%3Cpath d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'%3E%3C/path%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'%3E%3C/circle%3E%3Cpath d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'%3E%3C/path%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.settings-toggle-btn.is-back .settings-toggle-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M10 3 5 8l5 5' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M10 3 5 8l5 5' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 .tab-panel { display: none; position: relative; z-index: 1; padding: 0 14px 18px; }
@@ -385,6 +463,34 @@ button { font-family: var(--font-sans); }
 }
 .status.error { color: var(--danger); font-weight: 600; }
 
+/* ---------------- projects list header ---------------- */
+.projects-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.projects-list-header h3 {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.projects-count-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  transition: color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+}
+
 /* ---------------- project list ---------------- */
 #project-list { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
 
@@ -457,6 +563,11 @@ button { font-family: var(--font-sans); }
   50% { opacity: 0.4; transform: scale(0.8); }
 }
 
+/* Pin/delete icons: quieter at rest (opacity, not hidden — still fully
+   tappable/reachable), full opacity on row hover or on their own keyboard
+   focus. A pinned state always stays fully visible regardless of hover,
+   since "this is pinned" is a fact worth seeing at a glance, not just on
+   interaction. */
 .p-pin, .p-delete {
   display: flex;
   align-items: center;
@@ -470,14 +581,22 @@ button { font-family: var(--font-sans); }
   padding: 0;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
+  opacity: 0.55;
   transition: color var(--dur-base) var(--ease-out),
               background var(--dur-base) var(--ease-out),
+              opacity var(--dur-base) var(--ease-out),
               transform var(--dur-fast) var(--ease-spring);
+}
+.project-list-item:hover .p-pin,
+.project-list-item:hover .p-delete,
+.p-pin:focus-visible,
+.p-delete:focus-visible {
+  opacity: 1;
 }
 .p-pin:hover, .p-delete:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.07); }
 .p-delete:hover { color: var(--accent-strong); background: rgba(255, 255, 255, 0.12); }
 .p-pin:active, .p-delete:active { transform: scale(0.85); }
-.p-pin.is-pinned { color: var(--accent-strong); }
+.p-pin.is-pinned { color: var(--accent-strong); opacity: 1; }
 .p-pin.is-pinned:hover { transform: scale(1.12) rotate(-8deg); }
 
 .icon { width: 13px; height: 13px; flex-shrink: 0; display: block; }
@@ -500,6 +619,41 @@ button { font-family: var(--font-sans); }
 
 /* ---------------- project detail ---------------- */
 .project-detail { margin-top: 4px; }
+
+/* "Back to Projects" — the escape hatch out of the detail card. Ghost-text
+   style rather than a boxed button: it's a navigation affordance, not an
+   action, so it shouldn't compete visually with Check for Updates. */
+.pd-close-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 14px;
+  transition: color var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.pd-close-btn:hover { color: var(--text-primary); transform: translateX(-2px); }
+.pd-close-btn:active { transform: translateX(-2px) scale(0.96); }
+.pd-close-icon {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M10 3 5 8l5 5' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M10 3 5 8l5 5' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
 .pd-header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .project-detail h2 { font-size: 15px; margin: 0 0 2px; letter-spacing: -0.1px; }
 
@@ -701,7 +855,7 @@ button { font-family: var(--font-sans); }
 }
 .plp-meta-row { display: flex; gap: 12px; margin-top: 8px; }
 
-/* ---------------- Settings (Tab 3): token vault UI ---------------- */
+/* ---------------- Settings: token vault UI ---------------- */
 .settings-btn-row { display: flex; gap: 8px; margin-top: 4px; }
 .settings-btn-row .btn-ghost { flex: 1; }
 .settings-btn-row .btn-primary { flex: 1; width: auto; }
@@ -714,6 +868,14 @@ button { font-family: var(--font-sans); }
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--glass-border);
+}
+/* When the token entry group is hidden (already connected), the connected
+   row is the only content in the card — drop its top divider/spacing so it
+   doesn't look like a stray leftover section. */
+#settings-token-card.is-connected .settings-connected-row {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .settings-security-note h3 {
