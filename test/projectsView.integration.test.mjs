@@ -8,6 +8,15 @@
 // This file now only exercises Tab 2: create/pin/check/sort. Element ids
 // match the current popup.html exactly, not the old three-section layout.
 //
+// UI/UX pass (this session): projectsView.js gained a "back to list" close
+// button on the detail card (#pd-close-btn) and a live tracked-repo count
+// badge (#projects-count). Both element ids were added to the fake DOM
+// below — this harness throws a clear "Test harness gap" error for any id
+// projectsView.js requests that it doesn't know about, so any new element
+// the real code queries via getElementById MUST be registered here or
+// initProjectsView() fails immediately on import. New regression coverage
+// for both features is added at the bottom of the pinning section.
+//
 // projectsView.js imports getToken from lib/tokenVault.js, which touches
 // `indexedDB` as an ambient global — so a fake indexedDB is wired up even
 // though no test here actually saves a token (getToken's null-blob path
@@ -88,8 +97,8 @@ function makeFakeElement(id) {
 }
 
 const elementIds = [
-  "project-list", "new-project-btn", "new-project-name", "new-project-repo", "new-project-form",
-  "project-detail", "pd-name", "pd-repo", "pd-meta", "pd-last-checked", "pd-last-commit", "pd-pin-btn",
+  "project-list", "projects-count", "new-project-btn", "new-project-name", "new-project-repo", "new-project-form",
+  "project-detail", "pd-close-btn", "pd-name", "pd-repo", "pd-meta", "pd-last-checked", "pd-last-commit", "pd-pin-btn",
   "pd-refresh-btn", "pd-status", "pd-history",
 ];
 
@@ -166,6 +175,15 @@ console.log("=== Basic create + auto-check flow ===");
 initProjectsView();
 console.log("  ok  - initProjectsView() ran without throwing");
 
+// initProjectsView() fires its initial renderList() without awaiting it
+// (matches the real popup.js behavior — nothing in the app awaits this
+// either). Let that microtask settle before asserting on anything it sets.
+await new Promise((r) => setTimeout(r, 0));
+
+console.log("\nConfirming the empty-state count badge reads 0 before any project exists...");
+assert.equal(elements["projects-count"].textContent, "0", "projects-count must read 0 with no tracked repos yet");
+console.log("  ok  - projects-count badge starts at 0");
+
 console.log("\nCreating a project via the real 'new project' handler...");
 elements["new-project-name"].value = "Fake Project";
 elements["new-project-repo"].value = "fake/repo";
@@ -190,6 +208,34 @@ assert.equal(chromeStorageMock.projects["fake-project"].repoMeta.stars, 7);
 console.log(`  ok  - pd-last-checked: "${elements["pd-last-checked"].textContent}"`);
 console.log(`  ok  - pd-last-commit: "${elements["pd-last-commit"].textContent}"`);
 console.log("  ok  - repoMeta snapshot stored alongside the commit check");
+
+console.log("\nConfirming the count badge ticked up to 1 tracked repo...");
+assert.equal(elements["projects-count"].textContent, "1", "projects-count must reflect the newly tracked repo");
+console.log("  ok  - projects-count badge reads 1 after the first repo is tracked");
+
+console.log("\n--- REGRESSION: back/cancel button on the detail card ---");
+console.log("Detail card should be open (visible) right after creating a project...");
+assert.equal(elements["project-detail"].hidden, false, "the detail card must be open after a project is created and auto-opened");
+console.log("  ok  - detail card is open");
+
+console.log("Clicking the new #pd-close-btn 'back to list' button...");
+await elements["pd-close-btn"].dispatch("click");
+assert.equal(elements["project-detail"].hidden, true, "REGRESSION: clicking pd-close-btn must hide the detail card, returning to the list");
+console.log("  ok  - REGRESSION: pd-close-btn correctly closes the detail card back to the list");
+
+console.log("Re-opening the project via a list row click, to continue exercising the rest of the flow...");
+// The 'Fake Project' row is the only row rendered so far — its click
+// handler (registered in renderList) re-opens the same detail view. This
+// mirrors how a real user would get back into a project after using the
+// new close button.
+assert.equal(createdRows.length >= 1, true, "at least one row must have been created by renderList()");
+await createdRows[0].dispatch("click", { target: { closest: () => null } });
+// The row's click handler calls openProject(p.id) without awaiting it
+// (fire-and-forget, same as production) — flush that microtask before
+// checking the resulting DOM state.
+await new Promise((r) => setTimeout(r, 0));
+assert.equal(elements["project-detail"].hidden, false, "clicking a list row must re-open the detail card");
+console.log("  ok  - a list row click re-opens the detail card after it was closed");
 
 console.log("\nClicking 'Check for Updates' again with the SAME upstream commit (no-op expected)...");
 commitCallCount = 0;
@@ -251,6 +297,10 @@ console.log("  ok  - a failed first-check doesn't block project creation");
 console.log("  ok  - REGRESSION: lastCheckedAt is stamped even though the check failed, commitHistory stays empty");
 console.log("  ok  - failure is surfaced in the status line");
 
+console.log("\nConfirming the count badge now reads 2 tracked repos...");
+assert.equal(elements["projects-count"].textContent, "2", "projects-count must reflect both tracked repos");
+console.log("  ok  - projects-count badge reads 2 after the second repo is tracked");
+
 console.log("\n--- Multi-project list scenario (sort check) ---");
 const listRows = elements["project-list"]._children;
 assert.equal(listRows.length, 2, "both tracked projects should render as rows");
@@ -261,5 +311,44 @@ assert.ok(listRows[1].innerHTML.includes("Zzz Second Project"), "the unpinned ne
 assert.ok(listRows[1].innerHTML.includes("badge-pending"), "a never-checked project's row must carry the not-checked badge, based on lastCommitAt not lastCheckedAt");
 console.log("  ok  - pinned project sorts first regardless of name or recency");
 console.log("  ok  - unpinned never-checked project (by commit, despite having a lastCheckedAt) still shows the not-checked badge");
+
+console.log("\n--- REGRESSION: removing a repo while its detail card is open must also close the card ---");
+// The currently active/open project at this point is "Zzz Second Project"
+// — it was auto-opened by the new-project handler right after it was
+// created (openProject(id) runs immediately after store.create), and
+// nothing since (the two refresh clicks and the pin click all targeted the
+// then-active project, but creating Zzz Second Project re-pointed
+// activeProjectId at it). Deleting THAT project via its list row's delete
+// button must close the detail card too, not leave it open pointing at a
+// project that no longer exists.
+assert.ok(
+  elements["pd-status"].textContent.includes("first check failed"),
+  "sanity check: the detail card must still be showing Zzz Second Project (its status line) before this delete"
+);
+assert.equal(elements["project-detail"].hidden, false, "sanity check: detail card should still be open before delete");
+const freshRows = elements["project-list"]._children;
+const zzzRow = freshRows.find((r) => r.innerHTML.includes("Zzz Second Project"));
+assert.ok(zzzRow, "the Zzz Second Project row must exist to test delete-while-open");
+const deleteStub = zzzRow._stubChildren[".p-delete"];
+await deleteStub.dispatch("click", { stopPropagation: () => {} });
+// The delete handler awaits store.remove() and closeProjectDetail(), but
+// calls renderList() at the end without awaiting it (same as production)
+// — flush that microtask before checking anything renderList() sets.
+await new Promise((r) => setTimeout(r, 0));
+assert.equal(
+  chromeStorageMock.projects["zzz-second-project"],
+  undefined,
+  "the project must be removed from storage"
+);
+assert.equal(
+  elements["project-detail"].hidden,
+  true,
+  "REGRESSION: deleting the currently-open project must close its detail card, not leave it open pointing at a removed project"
+);
+console.log("  ok  - REGRESSION: deleting the open project closes its detail card");
+
+console.log("\nConfirming the count badge dropped back to 1 after the delete...");
+assert.equal(elements["projects-count"].textContent, "1", "projects-count must reflect the removal");
+console.log("  ok  - projects-count badge reads 1 after deleting the open project");
 
 console.log("\nAll projectsView integration checks passed.");
