@@ -11,6 +11,11 @@
 // tab is gone — the calendar moved to Pulse (Tab 1), and "recently pushed"
 // here is now just this same tracked list's unpinned tail, sorted by commit
 // recency (sortProjectsForList already does this).
+//
+// UI/UX pass (this session): added a "back to list" affordance on the
+// project-detail card (#pd-close-btn) so opening a repo no longer feels
+// like a one-way door, plus a small list header with a live tracked-repo
+// count for quicker at-a-glance context.
 import { getLatestCommit, getRepoMeta, parseRepoInput } from "./lib/github.js";
 import { createProjectStore } from "./lib/projectStore.js";
 import { chromeStorageAdapter } from "./lib/storageAdapter.js";
@@ -53,12 +58,14 @@ function compareByCommitRecency(a, b) {
 
 export function initProjectsView() {
   const listEl = document.getElementById("project-list");
+  const projectsCountEl = document.getElementById("projects-count");
   const newBtn = document.getElementById("new-project-btn");
   const nameInput = document.getElementById("new-project-name");
   const repoInput = document.getElementById("new-project-repo");
   const newForm = document.getElementById("new-project-form");
 
   const detailEl = document.getElementById("project-detail");
+  const pdCloseBtn = document.getElementById("pd-close-btn");
   const pdName = document.getElementById("pd-name");
   const pdRepo = document.getElementById("pd-repo");
   const pdMeta = document.getElementById("pd-meta");
@@ -84,8 +91,15 @@ export function initProjectsView() {
     return parts.join(" · ");
   }
 
+  /** Closes the detail card back to the list — the "back/cancel" affordance. */
+  function closeProjectDetail() {
+    activeProjectId = null;
+    detailEl.hidden = true;
+  }
+
   async function renderList() {
     const projects = sortProjectsForList(await store.list());
+    if (projectsCountEl) projectsCountEl.textContent = String(projects.length);
     listEl.innerHTML = "";
     if (!projects.length) {
       listEl.innerHTML = `<div class="empty-state"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2a1 1 0 0 0-1 1v11l4.5-2.7L12.5 14V3a1 1 0 0 0-1-1h-7Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><p class="hint">No repos tracked yet — add one below.</p></div>`;
@@ -123,10 +137,7 @@ export function initProjectsView() {
         e.stopPropagation();
         if (!confirm(`Stop tracking "${p.name}"? This only removes it from GITSTREAK — nothing on GitHub is affected.`)) return;
         await store.remove(p.id);
-        if (activeProjectId === p.id) {
-          activeProjectId = null;
-          detailEl.hidden = true;
-        }
+        if (activeProjectId === p.id) closeProjectDetail();
         renderList();
       });
       listEl.appendChild(row);
@@ -245,6 +256,10 @@ export function initProjectsView() {
     } catch (e) {
       alert(e.message);
     }
+  });
+
+  pdCloseBtn.addEventListener("click", () => {
+    closeProjectDetail();
   });
 
   pdPinBtn.addEventListener("click", async () => {
