@@ -16,10 +16,15 @@
     </div>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="pulse" role="tab" aria-selected="true">Pulse</button>
-    <button class="tab-btn" data-tab="projects" role="tab" aria-selected="false">Projects</button>
-    <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">Settings</button>
+  <nav class="tabs">
+    <div class="tabs-main" id="tabs-main" role="tablist">
+      <button class="tab-btn active" data-tab="pulse" role="tab" aria-selected="true">Pulse</button>
+      <button class="tab-btn" data-tab="projects" role="tab" aria-selected="false">Projects</button>
+    </div>
+    <span id="settings-nav-label" class="settings-nav-label" hidden>Settings</span>
+    <button id="settings-toggle-btn" class="settings-toggle-btn" type="button" aria-label="Settings" title="Settings">
+      <span class="settings-toggle-icon" aria-hidden="true"></span>
+    </button>
   </nav>
 
   <!-- ===================== TAB 1: PULSE ===================== -->
@@ -77,6 +82,10 @@
 
   <!-- ===================== TAB 2: PROJECTS ===================== -->
   <section id="tab-projects" class="tab-panel">
+    <div class="projects-list-header">
+      <h3>Tracked Repos</h3>
+      <span id="projects-count" class="projects-count-badge">0</span>
+    </div>
     <div id="project-list"></div>
 
     <details class="field field-collapsible add-project-trigger" id="new-project-form">
@@ -89,6 +98,11 @@
     </details>
 
     <div id="project-detail" class="project-detail glass-card" hidden>
+      <button id="pd-close-btn" class="pd-close-btn" type="button" aria-label="Back to Projects" title="Back to Projects">
+        <span class="pd-close-icon" aria-hidden="true"></span>
+        <span>Back to Projects</span>
+      </button>
+
       <div class="pd-header-row">
         <div>
           <h2 id="pd-name"></h2>
@@ -110,25 +124,28 @@
     </div>
   </section>
 
-  <!-- ===================== TAB 3: SETTINGS ===================== -->
+  <!-- ===================== SETTINGS (gear-toggled full swap) ===================== -->
   <section id="tab-settings" class="tab-panel">
-    <div class="glass-card">
-      <div class="field">
-        <label for="settings-token-input">GitHub token</label>
-        <input id="settings-token-input" type="password" placeholder="ghp_... or github_pat_..." autocomplete="off" />
-        <p class="hint">
-          Use a fine-grained personal access token, scoped to just <code>Contents: Read</code>
-          (plus private-repo access if you want to track private repos), with an expiration set.
-          The token is encrypted before it's stored — see below for how.
-        </p>
+    <div id="settings-token-card" class="glass-card">
+      <div id="settings-token-entry">
+        <div class="field">
+          <label for="settings-token-input">GitHub token</label>
+          <input id="settings-token-input" type="password" placeholder="ghp_... or github_pat_..." autocomplete="off" />
+          <p class="hint">
+            Use a fine-grained personal access token, scoped to just <code>Contents: Read</code>
+            (plus private-repo access if you want to track private repos), with an expiration set.
+            The token is encrypted before it's stored — see below for how.
+          </p>
+        </div>
+
+        <div class="settings-btn-row">
+          <button id="settings-test-btn" class="btn-ghost" type="button">Test Connection</button>
+          <button id="settings-save-btn" class="btn-primary" type="button" disabled>Save Token</button>
+        </div>
+
+        <div id="settings-scopes" class="hint mono" hidden></div>
       </div>
 
-      <div class="settings-btn-row">
-        <button id="settings-test-btn" class="btn-ghost" type="button">Test Connection</button>
-        <button id="settings-save-btn" class="btn-primary" type="button" disabled>Save Token</button>
-      </div>
-
-      <div id="settings-scopes" class="hint mono" hidden></div>
       <div id="settings-status" class="status" hidden></div>
 
       <div id="settings-connected-row" class="settings-connected-row" hidden>
