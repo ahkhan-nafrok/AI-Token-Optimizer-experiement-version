@@ -1,12 +1,21 @@
 // settingsView.js
-// Tab 3 — Settings. The token entry/test/revoke flow described in the
+// Settings panel — the token entry/test/revoke flow described in the
 // GITSTREAK security layer: masked input, never redisplayed in full,
 // test-connection before save, revoke wipes both the encrypted blob and
 // the vault key.
+//
+// UI/UX pass (this session): once a token is saved, the entire entry group
+// (label + input + hint + Test/Save buttons + scopes readout) is hidden —
+// there is nothing to "re-enter" while a token is already stored, so
+// showing that form was dead weight. Only the "Connected as ghp_••••" row
+// + Revoke Locally button show while connected. The entry group reappears
+// automatically once the token is revoked.
 import { chromeStorageAdapter } from "./lib/storageAdapter.js";
 import { saveToken, getToken, revokeToken, maskToken, testConnection } from "./lib/tokenVault.js";
 
 export function initSettingsView() {
+  const tokenCard = document.getElementById("settings-token-card");
+  const tokenEntry = document.getElementById("settings-token-entry");
   const tokenInput = document.getElementById("settings-token-input");
   const testBtn = document.getElementById("settings-test-btn");
   const saveBtn = document.getElementById("settings-save-btn");
@@ -26,12 +35,16 @@ export function initSettingsView() {
 
   async function refreshConnectedState() {
     const token = await getToken(chromeStorageAdapter);
-    if (!token) {
-      connectedRow.hidden = true;
+    const isConnected = !!token;
+
+    tokenCard.classList.toggle("is-connected", isConnected);
+    tokenEntry.hidden = isConnected;
+    connectedRow.hidden = !isConnected;
+
+    if (!isConnected) {
       saveBtn.disabled = true;
       return;
     }
-    connectedRow.hidden = false;
     connectedLabel.textContent = `Connected as ${maskToken(token)}`;
   }
 
